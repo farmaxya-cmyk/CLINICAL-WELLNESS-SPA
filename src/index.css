@@ -1,0 +1,28 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body { 
+    font-family: 'Inter', sans-serif; 
+    background-color: #f8fafc; /* slate-50 */
+}
+
+/* Custom prose styles for Gemini output */
+.prose {
+    color: #334155; /* slate-700 */
+}
+.prose h1, .prose h2, .prose h3 {
+    color: #1e293b; /* slate-800 */
+}
+.prose strong {
+    color: #0f172a; /* slate-900 */
+}
+.prose blockquote {
+    border-left-color: #0ea5e9; /* sky-500 */
+    color: #475569; /* slate-600 */
+}
+.prose a {
+    color: #0ea5e9; /* sky-500 */
+}

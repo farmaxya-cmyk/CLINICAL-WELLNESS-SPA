@@ -1,5 +1,5 @@
 
-const CACHE_NAME = 'clinical-wellness-v4';
+const CACHE_NAME = 'clinical-wellness-v6';
 const urlsToCache = [
   '/',
   '/index.html',
@@ -19,6 +19,19 @@ self.addEventListener('install', (event) => {
 });
 
 self.addEventListener('fetch', (event) => {
+  const url = new URL(event.request.url);
+
+  // CRITICO: Ignora richieste di sviluppo Vite e Hot Module Replacement
+  // Questo previene il blocco (White Screen) in localhost se il SW è attivo
+  if (
+    url.pathname.startsWith('/@') || 
+    url.pathname.startsWith('/node_modules') || 
+    url.pathname.includes('chrome-extension') ||
+    url.port === '5173' // Porta standard di Vite
+  ) {
+    return;
+  }
+
   event.respondWith(
     caches.match(event.request)
       .then((response) => {
