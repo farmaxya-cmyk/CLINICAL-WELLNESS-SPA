@@ -44,6 +44,7 @@ const BreathingScreen = () => {
     // Refs for scheduling
     const audioRef = React.useRef<HTMLAudioElement>(null); 
     const audioCtxRef = React.useRef<AudioContext | null>(null);
+    const masterGainRef = React.useRef<GainNode | null>(null); // Nuovo nodo Master per gestire lo stop immediato
     const schedulerTimerRef = React.useRef<any>(null);
     const nextNoteTimeRef = React.useRef<number>(0);
     const cyclePhaseRef = React.useRef<number>(0); 
@@ -60,9 +61,7 @@ const BreathingScreen = () => {
     React.useEffect(() => {
         if (audioRef.current) {
             const audioEl = audioRef.current;
-            // Only reload if src actually changed to prevent restart on re-renders
             const currentSrc = audioEl.getAttribute('src');
-            // Check if URL ends with the selected track (handling full vs relative paths)
             if (!currentSrc || !currentSrc.endsWith(musicTrack)) {
                 audioEl.src = musicTrack;
                 audioEl.load();
@@ -78,22 +77,24 @@ const BreathingScreen = () => {
     // --- AUDIO SCHEDULING ENGINE (Ding sounds) ---
     
     const playOscillator = (time: number, freq: number) => {
-        if (mode !== 'closed' || !audioCtxRef.current) return;
+        if (mode !== 'closed' || !audioCtxRef.current || !masterGainRef.current) return;
         const ctx = audioCtxRef.current;
         
         const osc = ctx.createOscillator();
-        const gain = ctx.createGain();
+        const envelope = ctx.createGain();
         
-        osc.connect(gain);
-        gain.connect(ctx.destination);
+        osc.connect(envelope);
+        // Collega l'envelope al MasterGain invece che direttamente alla destinazione
+        // Questo ci permette di "tagliare" il suono istantaneamente se l'utente preme stop
+        envelope.connect(masterGainRef.current);
         
         osc.type = 'sine';
         osc.frequency.setValueAtTime(freq, time);
         
-        // Envelope
-        gain.gain.setValueAtTime(0, time);
-        gain.gain.linearRampToValueAtTime(dingVolume, time + 0.05);
-        gain.gain.exponentialRampToValueAtTime(0.001, time + 1.2);
+        // Envelope shaping
+        envelope.gain.setValueAtTime(0, time);
+        envelope.gain.linearRampToValueAtTime(dingVolume, time + 0.05);
+        envelope.gain.exponentialRampToValueAtTime(0.001, time + 1.2);
         
         osc.start(time);
         osc.stop(time + 1.2);
@@ -126,7 +127,11 @@ const BreathingScreen = () => {
         if (!audioCtxRef.current) return;
         const ctx = audioCtxRef.current;
         
-        while (nextNoteTimeRef.current < ctx.currentTime + 1.5) {
+        // FIX: Aumentato il lookahead da 1.5s a 20.0s.
+        // Questo programma i suoni molto in anticipo.
+        // Se lo schermo si spegne e il JS rallenta, l'hardware audio ha già 
+        // 20 secondi di "ding" in coda da suonare.
+        while (nextNoteTimeRef.current < ctx.currentTime + 20.0) {
             if (cyclePhaseRef.current === 0) {
                 playOscillator(nextNoteTimeRef.current, 800);
             } else if (cyclePhaseRef.current === 2) {
@@ -142,14 +147,26 @@ const BreathingScreen = () => {
             // Init Audio Context if needed
             if (!audioCtxRef.current) {
                 audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+                
+                // Crea il Master Gain Node
+                const ctx = audioCtxRef.current;
+                masterGainRef.current = ctx.createGain();
+                masterGainRef.current.connect(ctx.destination);
             }
+            
             const ctx = audioCtxRef.current;
             if (ctx.state === 'suspended') ctx.resume();
+
+            // Assicura che il volume master sia su 1 quando inizia
+            if (masterGainRef.current) {
+                masterGainRef.current.gain.cancelScheduledValues(ctx.currentTime);
+                masterGainRef.current.gain.setValueAtTime(1, ctx.currentTime);
+            }
 
             nextNoteTimeRef.current = ctx.currentTime + 0.1;
             cyclePhaseRef.current = 0; 
 
-            schedulerTimerRef.current = setInterval(schedule, 100);
+            schedulerTimerRef.current = setInterval(schedule, 250); // Interval leggermente più rilassato
             
             // Visual Timer
             const pattern = BREATHING_PATTERNS[patternKey];
@@ -208,10 +225,20 @@ const BreathingScreen = () => {
 
     const handleStop = () => {
         setIsActive(false);
+        
+        // Audio Music Stop
         if (audioRef.current) {
             audioRef.current.pause();
             audioRef.current.currentTime = 0;
         }
+
+        // Audio Oscillator Hard Stop (fondamentale perché abbiamo programmato 20s nel futuro)
+        if (audioCtxRef.current && masterGainRef.current) {
+            // Mettiamo il volume master a 0 istantaneamente per zittire la coda programmata
+            masterGainRef.current.gain.cancelScheduledValues(audioCtxRef.current.currentTime);
+            masterGainRef.current.gain.setValueAtTime(0, audioCtxRef.current.currentTime);
+        }
+
         setInstruction('Inizia');
         setScale(0.6);
         setCycles(0);
