@@ -44,11 +44,10 @@ const BreathingScreen = () => {
     // Refs for scheduling
     const audioRef = React.useRef<HTMLAudioElement>(null); 
     const audioCtxRef = React.useRef<AudioContext | null>(null);
-    const masterGainRef = React.useRef<GainNode | null>(null); // Nuovo nodo Master per gestire lo stop immediato
-    const schedulerTimerRef = React.useRef<any>(null);
-    const nextNoteTimeRef = React.useRef<number>(0);
-    const cyclePhaseRef = React.useRef<number>(0); 
+    const masterGainRef = React.useRef<GainNode | null>(null);
+    const scheduledNodesRef = React.useRef<AudioScheduledSourceNode[]>([]); // Track nodes to stop them
     const visualTimerRef = React.useRef<any>(null);
+    const startTimeRef = React.useRef<number>(0);
 
     // Update Music Volume
     React.useEffect(() => {
@@ -74,19 +73,14 @@ const BreathingScreen = () => {
         }
     }, [musicTrack, isActive]);
 
-    // --- AUDIO SCHEDULING ENGINE (Ding sounds) ---
+    // --- AUDIO SCHEDULING ENGINE ---
     
-    const playOscillator = (time: number, freq: number) => {
-        if (mode !== 'closed' || !audioCtxRef.current || !masterGainRef.current) return;
-        const ctx = audioCtxRef.current;
-        
+    const createOscillatorNode = (time: number, freq: number, ctx: AudioContext, master: GainNode) => {
         const osc = ctx.createOscillator();
         const envelope = ctx.createGain();
         
         osc.connect(envelope);
-        // Collega l'envelope al MasterGain invece che direttamente alla destinazione
-        // Questo ci permette di "tagliare" il suono istantaneamente se l'utente preme stop
-        envelope.connect(masterGainRef.current);
+        envelope.connect(master);
         
         osc.type = 'sine';
         osc.frequency.setValueAtTime(freq, time);
@@ -98,57 +92,73 @@ const BreathingScreen = () => {
         
         osc.start(time);
         osc.stop(time + 1.2);
+        
+        return osc;
     };
 
-    const nextPhase = () => {
-        const pattern = BREATHING_PATTERNS[patternKey];
-        let duration = 0;
-        
-        switch (cyclePhaseRef.current) {
-            case 0: // Inhale
-                duration = pattern.inhale;
-                if (pattern.hold > 0) cyclePhaseRef.current = 1;
-                else cyclePhaseRef.current = 2;
-                break;
-            case 1: // Hold after inhale
-                duration = pattern.hold;
-                cyclePhaseRef.current = 2;
-                break;
-            case 2: // Exhale
-                duration = pattern.exhale;
-                cyclePhaseRef.current = 0;
-                break;
-        }
-        
-        nextNoteTimeRef.current += duration;
-    };
-
-    const schedule = () => {
-        if (!audioCtxRef.current) return;
+    // FIX CRITICO: Schedulazione in batch.
+    // Invece di usare setInterval, calcoliamo TUTTI i suoni per i prossimi X minuti
+    // e li inviamo all'AudioContext in un colpo solo.
+    // L'Hardware audio li eseguirà anche se il telefono dorme.
+    const scheduleFullSession = () => {
+        if (!audioCtxRef.current || !masterGainRef.current) return;
         const ctx = audioCtxRef.current;
+        const master = masterGainRef.current;
+        const pattern = BREATHING_PATTERNS[patternKey];
         
-        // FIX: Aumentato il lookahead da 1.5s a 20.0s.
-        // Questo programma i suoni molto in anticipo.
-        // Se lo schermo si spegne e il JS rallenta, l'hardware audio ha già 
-        // 20 secondi di "ding" in coda da suonare.
-        while (nextNoteTimeRef.current < ctx.currentTime + 20.0) {
-            if (cyclePhaseRef.current === 0) {
-                playOscillator(nextNoteTimeRef.current, 800);
-            } else if (cyclePhaseRef.current === 2) {
-                playOscillator(nextNoteTimeRef.current, 400); 
+        const now = ctx.currentTime;
+        // Piccolo ritardo per evitare glitch all'avvio
+        let cursorTime = now + 0.5; 
+        const endTime = now + duration;
+
+        // Pulisci vecchi nodi se esistono
+        stopAudioEngine();
+
+        // Ciclo fino alla fine del tempo impostato
+        while (cursorTime < endTime) {
+            
+            // 1. Suono Inspirazione (Alto)
+            if (mode === 'closed') {
+                const osc = createOscillatorNode(cursorTime, 800, ctx, master);
+                scheduledNodesRef.current.push(osc);
             }
-            nextPhase();
+            cursorTime += pattern.inhale;
+
+            // 2. Hold (Nessun suono, solo tempo)
+            if (pattern.hold > 0) {
+                cursorTime += pattern.hold;
+            }
+
+            // 3. Suono Espirazione (Basso)
+            // Controllo per non suonare se abbiamo superato il tempo
+            if (cursorTime < endTime && mode === 'closed') {
+                const osc = createOscillatorNode(cursorTime, 400, ctx, master);
+                scheduledNodesRef.current.push(osc);
+            }
+            cursorTime += pattern.exhale;
         }
     };
 
-    // Main loop logic
+    const stopAudioEngine = () => {
+        // Ferma tutti i nodi programmati
+        scheduledNodesRef.current.forEach(node => {
+            try { node.stop(); } catch(e) {}
+        });
+        scheduledNodesRef.current = [];
+        
+        // Reset Master Volume per sicurezza
+        if (audioCtxRef.current && masterGainRef.current) {
+            masterGainRef.current.gain.cancelScheduledValues(audioCtxRef.current.currentTime);
+            masterGainRef.current.gain.setValueAtTime(0, audioCtxRef.current.currentTime);
+        }
+    };
+
+    // Main Logic
     React.useEffect(() => {
         if (isActive) {
-            // Init Audio Context if needed
+            // 1. Init Audio Context
             if (!audioCtxRef.current) {
                 audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
-                
-                // Crea il Master Gain Node
                 const ctx = audioCtxRef.current;
                 masterGainRef.current = ctx.createGain();
                 masterGainRef.current.connect(ctx.destination);
@@ -157,86 +167,89 @@ const BreathingScreen = () => {
             const ctx = audioCtxRef.current;
             if (ctx.state === 'suspended') ctx.resume();
 
-            // Assicura che il volume master sia su 1 quando inizia
+            // 2. Reset Master Volume a 1
             if (masterGainRef.current) {
                 masterGainRef.current.gain.cancelScheduledValues(ctx.currentTime);
                 masterGainRef.current.gain.setValueAtTime(1, ctx.currentTime);
             }
 
-            nextNoteTimeRef.current = ctx.currentTime + 0.1;
-            cyclePhaseRef.current = 0; 
-
-            schedulerTimerRef.current = setInterval(schedule, 250); // Interval leggermente più rilassato
+            // 3. Schedula TUTTO ORA
+            scheduleFullSession();
+            startTimeRef.current = Date.now();
             
-            // Visual Timer
+            // 4. Gestione Visual (Separata dall'audio)
             const pattern = BREATHING_PATTERNS[patternKey];
             
-            const updateVisuals = () => {
-                const runVisualCycle = () => {
-                    setInstruction('Inspira');
-                    setScale(1);
+            const runVisualCycle = () => {
+                if (!isActive) return;
+                
+                setInstruction('Inspira');
+                setScale(1);
+                
+                const inhaleTime = pattern.inhale * 1000;
+                const holdTime = pattern.hold * 1000;
+                const exhaleTime = pattern.exhale * 1000;
+                
+                // Usiamo timeout a catena per la grafica
+                // Nota: La grafica si fermerà se lo schermo è spento, ma riprenderà
+                // (magari desincronizzata) quando si accende. L'audio invece sarà PERFETTO.
+                visualTimerRef.current = setTimeout(() => {
+                    if (holdTime > 0) setInstruction('Trattieni');
                     
-                    const inhaleTime = pattern.inhale * 1000;
-                    const holdTime = pattern.hold * 1000;
-                    const exhaleTime = pattern.exhale * 1000;
-                    
-                    visualTimerRef.current = setTimeout(() => {
-                        if (holdTime > 0) setInstruction('Trattieni');
+                    const nextStep = () => {
+                        setInstruction('Espira');
+                        setScale(0.6);
                         
-                        const nextStep = () => {
-                            setInstruction('Espira');
-                            setScale(0.6);
-                            
-                            visualTimerRef.current = setTimeout(() => {
-                                setCycles(c => c + 1);
-                                if (isActive) runVisualCycle();
-                            }, exhaleTime);
-                        };
+                        visualTimerRef.current = setTimeout(() => {
+                            setCycles(c => c + 1);
+                            // Ricalibra se necessario, ma per ora loop semplice
+                            if (isActive) runVisualCycle(); 
+                        }, exhaleTime);
+                    };
 
-                        if (holdTime > 0) {
-                            visualTimerRef.current = setTimeout(nextStep, holdTime);
-                        } else {
-                            nextStep();
-                        }
-                    }, inhaleTime);
-                };
-                runVisualCycle();
+                    if (holdTime > 0) {
+                        visualTimerRef.current = setTimeout(nextStep, holdTime);
+                    } else {
+                        nextStep();
+                    }
+                }, inhaleTime);
             };
             
-            updateVisuals();
+            runVisualCycle();
 
-            const countdown = setInterval(() => {
-                setTimeLeft(t => {
-                    if (t <= 1) {
-                        handleStop(); 
-                        return 0;
-                    }
-                    return t - 1;
-                });
+            // 5. Countdown timer (UI only)
+            // Usiamo Date.now() per calcolare il delta reale anche se il telefono dorme
+            const endTimestamp = Date.now() + (duration * 1000);
+            
+            const countdownInterval = setInterval(() => {
+                const now = Date.now();
+                const remaining = Math.ceil((endTimestamp - now) / 1000);
+                
+                if (remaining <= 0) {
+                    setTimeLeft(0);
+                    handleStop();
+                    clearInterval(countdownInterval);
+                } else {
+                    setTimeLeft(remaining);
+                }
             }, 1000);
 
             return () => {
-                clearInterval(schedulerTimerRef.current);
-                clearInterval(countdown);
                 clearTimeout(visualTimerRef.current);
+                clearInterval(countdownInterval);
+                stopAudioEngine(); // Cleanup fondamentale se componente smonta
             };
         }
-    }, [isActive]);
+    }, [isActive]); // Re-run solo se isActive cambia
 
     const handleStop = () => {
         setIsActive(false);
+        stopAudioEngine();
         
         // Audio Music Stop
         if (audioRef.current) {
             audioRef.current.pause();
             audioRef.current.currentTime = 0;
-        }
-
-        // Audio Oscillator Hard Stop (fondamentale perché abbiamo programmato 20s nel futuro)
-        if (audioCtxRef.current && masterGainRef.current) {
-            // Mettiamo il volume master a 0 istantaneamente per zittire la coda programmata
-            masterGainRef.current.gain.cancelScheduledValues(audioCtxRef.current.currentTime);
-            masterGainRef.current.gain.setValueAtTime(0, audioCtxRef.current.currentTime);
         }
 
         setInstruction('Inizia');
