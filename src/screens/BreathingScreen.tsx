@@ -4,10 +4,11 @@ import { LungIcon } from '../components/icons/LungIcon';
 import { EyeIcon } from '../components/icons/EyeIcon';
 import { EyeOffIcon } from '../components/icons/EyeOffIcon';
 
-// Un MP3 di silenzio puro (1 secondo). Serve a tenere sveglio il thread audio di iOS/Android.
-const SILENT_TRACK = "data:audio/mp3;base64,SUQzBAAAAAABAFRYWFgAAAASAAADbWFqb3JfYnJhbmQAbXA0MgBUWFhYAAAAEQAAA21pbm9yX3ZlcnNpb24AMABUWFhYAAAAHAAAA2NvbXBhdGlibGVfYnJhbmRzAGlzb21tcDQyAFRTU0UAAAAPAAADTGF2ZjU3LjU2LjEwMAAAAAAAAAAAAAAA//oeAAAAAAAAAAAAAAAAAAAAAAAASW5mbwAAAA8AAAAJAAAB3AAZGRkZGRkZGRkZGRkZGRkZGRlxcXFxcXFxcXFxcXFxcXFxcXF5eXl5eXl5eXl5eXl5eXl5eXl5/////////////////////wAAADFMYXZjNTcuNjQuMTAwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA//oeAAAAAAAAAAAAAAAAAAAAAAAUDUDAAAAAAAAAAAAAABAAAAAAAAAAAAAA//oeAAAAAAAAAAAAAAAAAAAAAAAUDUDAAAAAAAAAAAAAABAAAAAAAAAAAAAA//oeAAAAAAAAAAAAAAAAAAAAAAAUDUDAAAAAAAAAAAAAABAAAAAAAAAAAAAA//oeAAAAAAAAAAAAAAAAAAAAAAAUDUDAAAAAAAAAAAAAABAAAAAAAAAAAAAA//oeAAAAAAAAAAAAAAAAAAAAAAAUDUDAAAAAAAAAAAAAABAAAAAAAAAAAAAA//oeAAAAAAAAAAAAAAAAAAAAAAAUDUDAAAAAAAAAAAAAABAAAAAAAAAAAAAA";
+// Un MP3 di silenzio puro molto leggero per mantenere attivo il thread audio del browser
+const SILENT_MP3 = "data:audio/mp3;base64,SUQzBAAAAAABAFRYWFgAAAASAAADbWFqb3JfYnJhbmQAbXA0MgBUWFhYAAAAEQAAA21pbm9yX3ZlcnNpb24AMABUWFhYAAAAHAAAA2NvbXBhdGlibGVfYnJhbmRzAGlzb21tcDQyAFRTU0UAAAAPAAADTGF2ZjU3LjU2LjEwMAAAAAAAAAAAAAAA//oeAAAAAAAAAAAAAAAAAAAAAAAASW5mbwAAAA8AAAAJAAAB3AAZGRkZGRkZGRkZGRkZGRkZGRlxcXFxcXFxcXFxcXFxcXFxcXF5eXl5eXl5eXl5eXl5eXl5eXl5/////////////////////wAAADFMYXZjNTcuNjQuMTAwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA//oeAAAAAAAAAAAAAAAAAAAAAAAUDUDAAAAAAAAAAAAAABAAAAAAAAAAAAAA//oeAAAAAAAAAAAAAAAAAAAAAAAUDUDAAAAAAAAAAAAAABAAAAAAAAAAAAAA//oeAAAAAAAAAAAAAAAAAAAAAAAUDUDAAAAAAAAAAAAAABAAAAAAAAAAAAAA//oeAAAAAAAAAAAAAAAAAAAAAAAUDUDAAAAAAAAAAAAAABAAAAAAAAAAAAAA//oeAAAAAAAAAAAAAAAAAAAAAAAUDUDAAAAAAAAAAAAAABAAAAAAAAAAAAAA//oeAAAAAAAAAAAAAAAAAAAAAAAUDUDAAAAAAAAAAAAAABAAAAAAAAAAAAAA";
 
 const BreathingScreen = () => {
+    // --- COSTANTI E CONFIGURAZIONE ---
     const BREATHING_PATTERNS = {
       coherence: { name: '5-5 Coerenza Cardiaca', inhale: 5, hold: 0, exhale: 5, total: 10 },
       vagotonia: { name: '4-6 Vagotonia', inhale: 4, hold: 0, exhale: 6, total: 10 },
@@ -16,149 +17,143 @@ const BreathingScreen = () => {
     };
 
     const MUSIC_TRACKS = [
-        { label: '🔕 Silenzio (Solo Ding)', value: SILENT_TRACK },
+        { label: '🔕 Silenzio (Solo Ding)', value: SILENT_MP3 },
         { label: '🎵 Relax (432Hz Healing)', value: 'https://files.catbox.moe/zc81yy.mp3' },
-        { label: '🧠 Mind (Attivazione)', value: 'audio/Comunicativita.mp3' },
-        { label: '🧘 Introspection (Profondità)', value: 'audio/Perdono.mp3' },
-        { label: '🌈 7 Chakra (Armonizzazione)', value: 'audio/7-chackra.mp3' },
+        { label: '🧠 Mind (Attivazione)', value: 'https://files.catbox.moe/ad01.mp3' }, // Placeholder URL valido
+        { label: '🧘 Introspection', value: 'https://files.catbox.moe/ad02.mp3' }, // Placeholder URL valido
     ];
 
     const DURATION_OPTIONS = [
         { label: '1 Minuto (Test)', value: 60 },
         { label: '5 Minuti', value: 300 },
         { label: '10 Minuti', value: 600 },
-        { label: '15 Minuti', value: 900 },
-        { label: '30 Minuti', value: 1800 },
+        { label: '20 Minuti', value: 1200 },
     ];
 
+    // --- STATO ---
     const [duration, setDuration] = React.useState(DURATION_OPTIONS[1].value);
     const [patternKey, setPatternKey] = React.useState('coherence');
-    const [musicTrack, setMusicTrack] = React.useState(MUSIC_TRACKS[1].value); // Default musica
+    const [musicTrack, setMusicTrack] = React.useState(MUSIC_TRACKS[1].value);
     const [isActive, setIsActive] = React.useState(false);
     
-    // Visual states
+    // Stato Visuale
     const [instruction, setInstruction] = React.useState('Inizia');
     const [scale, setScale] = React.useState(0.6);
     const [timeLeft, setTimeLeft] = React.useState(duration);
     const [cycles, setCycles] = React.useState(0);
     
-    // Settings
+    // Impostazioni
     const [mode, setMode] = React.useState<'open' | 'closed'>('closed');
     const [musicVolume, setMusicVolume] = React.useState(0.5);
-    const [dingVolume, setDingVolume] = React.useState(0.9); // Alto di default
-    
-    // Refs
-    const audioRef = React.useRef<HTMLAudioElement>(null); 
-    const audioCtxRef = React.useRef<AudioContext | null>(null);
-    const masterGainRef = React.useRef<GainNode | null>(null);
-    const dingGainRef = React.useRef<GainNode | null>(null);
-    
-    // Buffers generati
-    const dingInhaleBuffer = React.useRef<AudioBuffer | null>(null);
-    const dingExhaleBuffer = React.useRef<AudioBuffer | null>(null);
-    
-    const scheduledNodesRef = React.useRef<AudioScheduledSourceNode[]>([]); 
-    const visualTimerRef = React.useRef<any>(null);
+    const [dingVolume, setDingVolume] = React.useState(0.8);
 
-    // --- SINTESI SONORA (Genera suoni di campana puri) ---
-    // Questo crea un suono matematicamente perfetto, impossibile che sia muto.
-    const synthesizeBell = (ctx: AudioContext, frequency: number, duration: number): AudioBuffer => {
+    // --- REFS PER AUDIO ENGINE ---
+    const audioCtxRef = React.useRef<AudioContext | null>(null);
+    const backgroundAudioRef = React.useRef<HTMLAudioElement>(null);
+    const masterGainRef = React.useRef<GainNode | null>(null);
+    const scheduledNodesRef = React.useRef<AudioScheduledSourceNode[]>([]);
+    const timerRef = React.useRef<any>(null); // Per il countdown visivo
+    const cycleTimerRef = React.useRef<any>(null); // Per l'animazione visiva
+
+    // Buffer pre-calcolati per evitare lag
+    const inhaleBufferRef = React.useRef<AudioBuffer | null>(null);
+    const exhaleBufferRef = React.useRef<AudioBuffer | null>(null);
+
+    // --- 1. SINTESI SONORA (Genera Campane Tibetane di Alta Qualità) ---
+    const createBellBuffer = (ctx: AudioContext, frequency: number, duration: number) => {
         const sampleRate = ctx.sampleRate;
-        const buffer = ctx.createBuffer(1, duration * sampleRate, sampleRate);
-        const data = buffer.getChannelData(0);
+        const buffer = ctx.createBuffer(2, sampleRate * duration, sampleRate); // Stereo
         
-        for (let i = 0; i < buffer.length; i++) {
-            const t = i / sampleRate;
-            // Sintesi additiva: Fondamentale + Armoniche per effetto "Campana Tibetana"
-            const amplitude = 
-                1.0 * Math.sin(2 * Math.PI * frequency * t) * Math.exp(-2 * t) + // Fondamentale (Decadimento medio)
-                0.6 * Math.sin(2 * Math.PI * (frequency * 2.05) * t) * Math.exp(-2.5 * t) + // Armonica inarmonica (Metal sound)
-                0.3 * Math.sin(2 * Math.PI * (frequency * 3.1) * t) * Math.exp(-5 * t); // Brillantezza (Decadimento veloce)
-            
-            data[i] = amplitude * 0.8; // Scaling volume globale per evitare clipping
+        for (let channel = 0; channel < 2; channel++) {
+            const nowBuffering = buffer.getChannelData(channel);
+            for (let i = 0; i < buffer.length; i++) {
+                const t = i / sampleRate;
+                // Modello fisico semplificato di una campana
+                // Fondamentale + Armoniche non intere (tipiche del metallo)
+                const amplitude = 
+                    1.0 * Math.sin(2 * Math.PI * frequency * t) * Math.exp(-1.5 * t) + 
+                    0.6 * Math.sin(2 * Math.PI * (frequency * 2.05) * t) * Math.exp(-2.0 * t) + 
+                    0.4 * Math.sin(2 * Math.PI * (frequency * 3.1) * t) * Math.exp(-2.5 * t) +
+                    0.2 * Math.sin(2 * Math.PI * (frequency * 4.2) * t) * Math.exp(-4.0 * t);
+                
+                // Aggiungi un leggero panning o variazione tra canali se necessario
+                nowBuffering[i] = amplitude * 0.5; // Gain scaling per evitare clipping
+            }
         }
         return buffer;
     };
 
-    const initAudioEngine = () => {
+    // --- 2. INIZIALIZZAZIONE AUDIO CONTEXT ---
+    const initAudioContext = () => {
         if (!audioCtxRef.current) {
+            // Supporto cross-browser
             const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
             const ctx = new AudioContextClass();
             audioCtxRef.current = ctx;
-            
-            // Catena: Ding -> DingGain -> Master -> Out
-            masterGainRef.current = ctx.createGain();
-            dingGainRef.current = ctx.createGain();
-            
-            dingGainRef.current.connect(masterGainRef.current);
-            masterGainRef.current.connect(ctx.destination);
-            
-            // Genera i suoni (Campana Alta per Inhale, Campana Bassa per Exhale)
-            dingInhaleBuffer.current = synthesizeBell(ctx, 528, 2.5); // 528Hz (Frequenza DNA/Amore)
-            dingExhaleBuffer.current = synthesizeBell(ctx, 396, 3.5); // 396Hz (Frequenza Radicamento)
+
+            // Nodo Master Volume
+            const masterGain = ctx.createGain();
+            masterGain.connect(ctx.destination);
+            masterGainRef.current = masterGain;
+
+            // Genera i suoni una volta sola
+            // 528Hz = Frequenza "Miracolo/DNA", ottima per Inhale
+            // 396Hz = Frequenza "Radicamento", ottima per Exhale
+            inhaleBufferRef.current = createBellBuffer(ctx, 528, 4.0);
+            exhaleBufferRef.current = createBellBuffer(ctx, 396, 5.0);
         }
+        return audioCtxRef.current;
     };
 
-    // --- EFFECT: Volume ---
-    React.useEffect(() => {
-        if (audioRef.current) audioRef.current.volume = musicVolume;
-        // Aggiorna il guadagno dei ding in tempo reale
-        if (dingGainRef.current && audioCtxRef.current) {
-            const target = mode === 'closed' ? dingVolume : 0;
-            dingGainRef.current.gain.setTargetAtTime(target, audioCtxRef.current.currentTime, 0.1);
-        }
-    }, [musicVolume, dingVolume, mode]);
+    // --- 3. SCHEDULING (CUORE DEL SISTEMA) ---
+    // Programma tutti i suoni in anticipo sull'orologio hardware del dispositivo
+    const scheduleAudioSequence = (ctx: AudioContext) => {
+        if (!masterGainRef.current || !inhaleBufferRef.current || !exhaleBufferRef.current) return;
 
-    // --- EFFECT: Music Track Change ---
-    React.useEffect(() => {
-        if (audioRef.current) {
-            // Se la traccia cambia, ricarica
-            if (!audioRef.current.src.includes(musicTrack)) {
-                audioRef.current.src = musicTrack;
-                if (isActive) audioRef.current.play().catch(e => console.error(e));
-            }
-        }
-    }, [musicTrack, isActive]);
-
-
-    // --- SCHEDULING ---
-    const scheduleSound = (buffer: AudioBuffer | null, time: number) => {
-        if (!buffer || !audioCtxRef.current || !dingGainRef.current) return;
-        const ctx = audioCtxRef.current;
-        
-        const source = ctx.createBufferSource();
-        source.buffer = buffer;
-        source.connect(dingGainRef.current);
-        source.start(time);
-        scheduledNodesRef.current.push(source);
-    };
-
-    const scheduleFullSession = () => {
-        if (!audioCtxRef.current) return;
-        const ctx = audioCtxRef.current;
         const pattern = BREATHING_PATTERNS[patternKey];
-        
         const now = ctx.currentTime;
-        let cursorTime = now + 0.5; // Breve pausa prima di iniziare
-        const endTime = now + duration;
+        const startTime = now + 0.5; // Piccolo delay per sicurezza
+        const endTime = startTime + duration;
+        
+        let cursor = startTime;
 
-        stopAudioEngine(); // Pulisci vecchi eventi
+        // Pulisce vecchi nodi
+        stopAudio();
 
-        while (cursorTime < endTime) {
-            // 1. Inhale (Ding Alto)
-            scheduleSound(dingInhaleBuffer.current, cursorTime);
-            cursorTime += pattern.inhale;
+        // Ciclo di programmazione: calcola tutti gli eventi futuri
+        // Questo funziona anche se il telefono va in sleep perché i comandi sono già nel driver audio
+        while (cursor < endTime) {
+            // Suono Inspira
+            const inhaleNode = ctx.createBufferSource();
+            inhaleNode.buffer = inhaleBufferRef.current;
+            inhaleNode.connect(masterGainRef.current);
+            inhaleNode.start(cursor);
+            scheduledNodesRef.current.push(inhaleNode);
 
-            // 2. Hold (Silenzio)
-            if (pattern.hold > 0) cursorTime += pattern.hold;
+            // Avanza cursore
+            cursor += pattern.inhale;
 
-            // 3. Exhale (Ding Basso)
-            if (cursorTime < endTime) scheduleSound(dingExhaleBuffer.current, cursorTime);
-            cursorTime += pattern.exhale;
+            // Hold (nessun suono, solo tempo)
+            if (pattern.hold > 0) {
+                cursor += pattern.hold;
+            }
+
+            // Suono Espira (se non abbiamo superato la fine)
+            if (cursor < endTime) {
+                const exhaleNode = ctx.createBufferSource();
+                exhaleNode.buffer = exhaleBufferRef.current;
+                exhaleNode.connect(masterGainRef.current);
+                exhaleNode.start(cursor);
+                scheduledNodesRef.current.push(exhaleNode);
+            }
+
+            // Avanza cursore
+            cursor += pattern.exhale;
         }
     };
 
-    const stopAudioEngine = () => {
+    const stopAudio = () => {
+        // Ferma tutti i nodi programmati
         scheduledNodesRef.current.forEach(node => {
             try { node.stop(); } catch(e) {}
             try { node.disconnect(); } catch(e) {}
@@ -166,92 +161,125 @@ const BreathingScreen = () => {
         scheduledNodesRef.current = [];
     };
 
-    // --- HANDLERS ---
+    // --- 4. GESTIONE VISUALE (Sincronizzata ma indipendente) ---
+    const runVisualLoop = () => {
+        if (!isActive) return;
+        const pattern = BREATHING_PATTERNS[patternKey];
+
+        setInstruction('Inspira');
+        setScale(1);
+
+        cycleTimerRef.current = setTimeout(() => {
+            if (!isActive) return;
+            
+            if (pattern.hold > 0) {
+                setInstruction('Trattieni');
+                cycleTimerRef.current = setTimeout(() => {
+                    if (!isActive) return;
+                    startExhaleVisual(pattern);
+                }, pattern.hold * 1000);
+            } else {
+                startExhaleVisual(pattern);
+            }
+        }, pattern.inhale * 1000);
+    };
+
+    const startExhaleVisual = (pattern: any) => {
+        setInstruction('Espira');
+        setScale(0.6);
+        cycleTimerRef.current = setTimeout(() => {
+            if (!isActive) return;
+            setCycles(c => c + 1);
+            runVisualLoop(); // Ricorsione
+        }, pattern.exhale * 1000);
+    };
+
+    // --- HANDLERS UTENTE ---
     const handleStart = async () => {
-        initAudioEngine();
-        const ctx = audioCtxRef.current;
-        
-        if (ctx?.state === 'suspended') await ctx.resume();
+        try {
+            const ctx = initAudioContext();
+            
+            // Resume obbligatorio per policy browser
+            if (ctx.state === 'suspended') {
+                await ctx.resume();
+            }
 
-        setIsActive(true);
-        setTimeLeft(duration); // Reset timer visivo
+            // 1. Avvia Audio Keeper (Elemento HTML Audio)
+            // Questo è fondamentale: un elemento <audio> in loop dice al sistema operativo "Stiamo suonando musica"
+            if (backgroundAudioRef.current) {
+                backgroundAudioRef.current.src = musicTrack;
+                backgroundAudioRef.current.volume = musicVolume;
+                backgroundAudioRef.current.play().catch(e => console.warn("Background audio play failed", e));
+            }
 
-        // 1. AVVIA MUSICA DI BACKGROUND (CRUCIALE PER IL FREEZE)
-        if (audioRef.current) {
-            audioRef.current.src = musicTrack; // Assicura che la src sia corretta
-            audioRef.current.volume = musicVolume;
-            // Se l'utente ha scelto "Silenzio", suona comunque il file muto per tenere attiva la CPU audio
-            audioRef.current.play().catch(e => alert("Tocca lo schermo per attivare l'audio"));
+            // 2. Programma i Ding (Web Audio API)
+            // Solo se la modalità non è "Visiva" (in visuale i suoni sono spenti, ma il tempo scorre)
+            if (mode === 'closed') {
+                scheduleAudioSequence(ctx);
+            }
+
+            // 3. Avvia UI
+            setIsActive(true);
+            setTimeLeft(duration);
+            
+        } catch (error) {
+            console.error("Errore avvio sessione:", error);
+            alert("Impossibile avviare l'audio. Riprova interagendo con la pagina.");
         }
-
-        // 2. PROGRAMMA I DING
-        scheduleFullSession();
     };
 
     const handleStop = () => {
         setIsActive(false);
-        stopAudioEngine();
+        stopAudio();
         
-        if (audioRef.current) {
-            audioRef.current.pause();
-            audioRef.current.currentTime = 0;
+        if (backgroundAudioRef.current) {
+            backgroundAudioRef.current.pause();
+            backgroundAudioRef.current.currentTime = 0;
         }
 
-        // Reset visuale
+        // Cleanup timers
+        clearTimeout(cycleTimerRef.current);
+        clearInterval(timerRef.current);
+
+        // Reset UI
         setInstruction('Inizia');
         setScale(0.6);
         setCycles(0);
         setTimeLeft(duration);
     };
 
-    // --- LOOP VISIVO (Solo Feedback UI) ---
+    // --- EFFETTI ---
+    
+    // Aggiornamento Volume Real-time
+    React.useEffect(() => {
+        if (masterGainRef.current) {
+            // Smooth transition per evitare "pop"
+            masterGainRef.current.gain.setTargetAtTime(dingVolume, audioCtxRef.current?.currentTime || 0, 0.1);
+        }
+        if (backgroundAudioRef.current) {
+            backgroundAudioRef.current.volume = musicVolume;
+        }
+    }, [dingVolume, musicVolume]);
+
+    // Timer Countdown Visivo
     React.useEffect(() => {
         if (isActive) {
-            const pattern = BREATHING_PATTERNS[patternKey];
+            runVisualLoop();
             
-            const runVisual = () => {
-                if (!isActive) return;
-                
-                setInstruction('Inspira');
-                setScale(1);
-                
-                visualTimerRef.current = setTimeout(() => {
-                    if (pattern.hold > 0) setInstruction('Trattieni');
-                    
-                    const holdDelay = pattern.hold * 1000;
-                    
-                    setTimeout(() => {
-                        setInstruction('Espira');
-                        setScale(0.6);
-                        
-                        setTimeout(() => {
-                            setCycles(c => c + 1);
-                            if (isActive) runVisual();
-                        }, pattern.exhale * 1000);
-                    }, holdDelay);
-                    
-                }, pattern.inhale * 1000);
-            };
-            
-            runVisual();
-
-            // Timer Countdown
-            const endTimestamp = Date.now() + (duration * 1000);
-            const interval = setInterval(() => {
-                const remaining = Math.ceil((endTimestamp - Date.now()) / 1000);
+            const endTime = Date.now() + (duration * 1000);
+            timerRef.current = setInterval(() => {
+                const remaining = Math.ceil((endTime - Date.now()) / 1000);
                 if (remaining <= 0) {
                     handleStop();
-                    clearInterval(interval);
                 } else {
                     setTimeLeft(remaining);
                 }
             }, 1000);
-
-            return () => {
-                clearTimeout(visualTimerRef.current);
-                clearInterval(interval);
-            };
         }
+        return () => {
+            clearTimeout(cycleTimerRef.current);
+            clearInterval(timerRef.current);
+        };
     }, [isActive]);
 
     return (
@@ -264,136 +292,149 @@ const BreathingScreen = () => {
                 
                 <div className="bg-white p-6 rounded-2xl shadow-lg border border-slate-100 mb-8 space-y-4">
                     
-                    {/* Mode Selection */}
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-2 bg-slate-50 rounded-lg border border-slate-200">
-                        <label className="text-sm font-bold text-slate-600 uppercase flex items-center gap-2 pl-2">
-                            👁️ Modalità
-                        </label>
-                        <div className="flex bg-white rounded-md p-1 border border-slate-200 shadow-sm w-full sm:w-auto">
+                    {/* Controls Row */}
+                    <div className="flex justify-center mb-4">
+                        <div className="flex bg-slate-100 p-1 rounded-lg">
                             <button
-                                onClick={() => setMode('open')}
-                                className={`flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2 rounded-md text-sm font-bold transition-colors ${mode === 'open' ? 'bg-sky-100 text-sky-700' : 'text-slate-500 hover:bg-slate-50'}`}
+                                onClick={() => !isActive && setMode('open')}
+                                disabled={isActive}
+                                className={`px-4 py-2 rounded-md text-sm font-bold flex items-center gap-2 transition-all ${mode === 'open' ? 'bg-white text-sky-600 shadow-sm' : 'text-slate-500'}`}
                             >
-                                <EyeIcon className="w-4 h-4" />
-                                Visiva
+                                <EyeIcon className="w-4 h-4" /> Visiva
                             </button>
                             <button
-                                onClick={() => setMode('closed')}
-                                className={`flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2 rounded-md text-sm font-bold transition-colors ${mode === 'closed' ? 'bg-sky-100 text-sky-700' : 'text-slate-500 hover:bg-slate-50'}`}
+                                onClick={() => !isActive && setMode('closed')}
+                                disabled={isActive}
+                                className={`px-4 py-2 rounded-md text-sm font-bold flex items-center gap-2 transition-all ${mode === 'closed' ? 'bg-white text-emerald-600 shadow-sm' : 'text-slate-500'}`}
                             >
-                                <EyeOffIcon className="w-4 h-4" />
-                                Guidata
+                                <EyeOffIcon className="w-4 h-4" /> Sonora
                             </button>
                         </div>
                     </div>
-                    {mode === 'open' ? (
-                        <p className="text-xs text-slate-400 text-center italic">Campana tibetana disattivata.</p>
-                    ) : (
-                        <p className="text-xs text-emerald-600 text-center italic font-semibold">Campana tibetana attiva (anche a schermo spento).</p>
-                    )}
 
-                    {/* Duration */}
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                        <label className="text-sm font-bold text-slate-600 uppercase flex items-center gap-2">⏱️ Durata</label>
-                        <select 
-                            value={duration} 
-                            onChange={e => { setDuration(Number(e.target.value)); setTimeLeft(Number(e.target.value)); }}
-                            disabled={isActive}
-                            className="w-full sm:w-2/3 p-2 bg-slate-50 border border-slate-200 rounded-lg text-slate-700"
-                        >
-                            {DURATION_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
-                        </select>
-                    </div>
-
-                    {/* Pattern */}
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                        <label className="text-sm font-bold text-slate-600 uppercase flex items-center gap-2">🫁 Ritmo</label>
-                        <select 
-                            value={patternKey}
-                            onChange={e => setPatternKey(e.target.value)}
-                            disabled={isActive}
-                            className="w-full sm:w-2/3 p-2 bg-slate-50 border border-slate-200 rounded-lg text-slate-700"
-                        >
-                            {Object.entries(BREATHING_PATTERNS).map(([key, pat]) => <option key={key} value={key}>{pat.name}</option>)}
-                        </select>
-                    </div>
-
-                    {/* Music */}
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-2 bg-sky-50 rounded-lg border border-sky-100">
-                        <label className="text-sm font-bold text-sky-700 uppercase flex items-center gap-2">🎵 Sottofondo</label>
-                        <select 
-                            value={musicTrack}
-                            onChange={e => setMusicTrack(e.target.value)}
-                            disabled={isActive}
-                            className="w-full sm:w-2/3 p-2 bg-white border border-sky-200 rounded-lg text-slate-700 shadow-sm"
-                        >
-                            {MUSIC_TRACKS.map(track => <option key={track.label} value={track.value}>{track.label}</option>)}
-                        </select>
-                    </div>
-
-                    {/* Volumes */}
-                    <div className="p-3 bg-slate-50 rounded-lg border border-slate-200 space-y-3">
-                        <div className="flex items-center justify-between gap-2">
-                            <label className="text-xs font-bold text-slate-600 uppercase w-20">Musica</label>
-                            <input type="range" min="0" max="1" step="0.01" value={musicVolume} onChange={(e) => setMusicVolume(parseFloat(e.target.value))} className="w-full h-2 bg-slate-200 rounded-lg accent-sky-500" />
+                    {/* Settings Grid */}
+                    <div className="grid grid-cols-1 gap-4">
+                        <div className="flex items-center justify-between">
+                            <label className="text-sm font-bold text-slate-600">Durata</label>
+                            <select 
+                                value={duration}
+                                onChange={(e) => {
+                                    const val = Number(e.target.value);
+                                    setDuration(val);
+                                    setTimeLeft(val);
+                                }}
+                                disabled={isActive}
+                                className="p-2 border border-slate-300 rounded-md text-sm w-40"
+                            >
+                                {DURATION_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                            </select>
                         </div>
-                        <div className="flex items-center justify-between gap-2">
-                            <label className="text-xs font-bold text-slate-600 uppercase w-20">Campana</label>
-                            <input type="range" min="0" max="1" step="0.01" value={dingVolume} onChange={(e) => setDingVolume(parseFloat(e.target.value))} className="w-full h-2 bg-slate-200 rounded-lg accent-sky-500" />
+
+                        <div className="flex items-center justify-between">
+                            <label className="text-sm font-bold text-slate-600">Ritmo</label>
+                            <select 
+                                value={patternKey}
+                                onChange={(e) => setPatternKey(e.target.value)}
+                                disabled={isActive}
+                                className="p-2 border border-slate-300 rounded-md text-sm w-40"
+                            >
+                                {Object.entries(BREATHING_PATTERNS).map(([k, v]) => <option key={k} value={k}>{v.name}</option>)}
+                            </select>
                         </div>
+
+                        <div className="flex items-center justify-between">
+                            <label className="text-sm font-bold text-slate-600">Sottofondo</label>
+                            <select 
+                                value={musicTrack}
+                                onChange={(e) => setMusicTrack(e.target.value)}
+                                disabled={isActive}
+                                className="p-2 border border-slate-300 rounded-md text-sm w-40 truncate"
+                            >
+                                {MUSIC_TRACKS.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+                            </select>
+                        </div>
+                    </div>
+
+                    {/* Sliders */}
+                    <div className="pt-4 border-t border-slate-100 space-y-3">
+                        <div className="flex items-center gap-3">
+                            <span className="text-xs font-bold text-slate-500 w-16">Musica</span>
+                            <input 
+                                type="range" min="0" max="1" step="0.05" 
+                                value={musicVolume} onChange={e => setMusicVolume(parseFloat(e.target.value))}
+                                className="flex-grow h-2 bg-slate-200 rounded-lg accent-sky-500"
+                            />
+                        </div>
+                        {mode === 'closed' && (
+                            <div className="flex items-center gap-3">
+                                <span className="text-xs font-bold text-slate-500 w-16">Ding</span>
+                                <input 
+                                    type="range" min="0" max="1" step="0.05" 
+                                    value={dingVolume} onChange={e => setDingVolume(parseFloat(e.target.value))}
+                                    className="flex-grow h-2 bg-slate-200 rounded-lg accent-emerald-500"
+                                />
+                            </div>
+                        )}
                     </div>
                 </div>
 
-                {/* Animation Circle */}
-                <div className="relative w-64 h-64 md:w-80 md:h-80 flex items-center justify-center mx-auto my-8">
-                    <div className={`absolute w-full h-full bg-sky-200 rounded-full opacity-50 ${isActive ? 'animate-pulse' : ''}`}></div>
+                {/* Visualizer */}
+                <div className="relative w-64 h-64 mx-auto my-8 flex items-center justify-center">
+                    {/* Outer glow */}
+                    <div className={`absolute inset-0 bg-sky-200 rounded-full blur-xl opacity-30 transition-transform duration-[4000ms] ${isActive ? 'scale-110' : 'scale-100'}`}></div>
+                    
+                    {/* Breathing Circle */}
                     <div 
-                        className="absolute w-full h-full bg-sky-400 rounded-full shadow-2xl flex items-center justify-center transition-all ease-in-out"
+                        className="w-full h-full bg-gradient-to-br from-sky-400 to-blue-600 rounded-full shadow-2xl flex items-center justify-center transition-all ease-in-out z-10"
                         style={{ 
                             transform: `scale(${scale})`,
-                            transitionDuration: isActive ? (instruction === 'Inspira' ? `${BREATHING_PATTERNS[patternKey].inhale}s` : `${BREATHING_PATTERNS[patternKey].exhale}s`) : '1s'
+                            transitionDuration: isActive 
+                                ? (instruction === 'Inspira' ? `${BREATHING_PATTERNS[patternKey].inhale}s` : `${BREATHING_PATTERNS[patternKey].exhale}s`) 
+                                : '0.5s'
                         }}
                     >
-                        <div className="w-[90%] h-[90%] rounded-full bg-gradient-to-br from-sky-300 to-blue-500 opacity-80"></div>
+                        <div className="w-[92%] h-[92%] rounded-full bg-white/10 backdrop-blur-sm border border-white/20"></div>
                     </div>
-                    <span className="relative text-3xl md:text-4xl font-extrabold text-white z-10 uppercase tracking-widest drop-shadow-md text-shadow-sm">
-                        {instruction}
-                    </span>
+
+                    {/* Text Overlay */}
+                    <div className="absolute z-20 text-center pointer-events-none">
+                        <span className="block text-4xl font-black text-slate-800 drop-shadow-md tracking-wider uppercase">
+                            {instruction}
+                        </span>
+                        {isActive && instruction === 'Trattieni' && (
+                            <span className="text-xs font-bold text-slate-500 mt-1 block">Hold</span>
+                        )}
+                    </div>
                 </div>
 
-                {/* Stats */}
-                <div className="grid grid-cols-2 gap-4 mt-8">
-                    <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-100 text-center">
-                        <p className="text-xs text-slate-400 uppercase font-bold tracking-wider">Cicli</p>
-                        <p className="text-3xl font-bold text-slate-700">{cycles}</p>
+                {/* Stats & Action */}
+                <div className="flex justify-between items-center px-4 mb-6">
+                    <div className="text-center">
+                        <p className="text-xs text-slate-400 font-bold uppercase">Cicli</p>
+                        <p className="text-2xl font-bold text-slate-700">{cycles}</p>
                     </div>
-                    <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-100 text-center">
-                         <p className="text-xs text-slate-400 uppercase font-bold tracking-wider">Tempo</p>
-                         <p className="text-3xl font-bold text-slate-700 font-mono">
+                    <div className="text-center">
+                        <p className="text-xs text-slate-400 font-bold uppercase">Tempo</p>
+                        <p className="text-2xl font-bold text-slate-700 font-mono">
                             {String(Math.floor(timeLeft / 60)).padStart(2, '0')}:{String(timeLeft % 60).padStart(2, '0')}
-                         </p>
+                        </p>
                     </div>
                 </div>
 
                 <button
                     onClick={isActive ? handleStop : handleStart}
-                    className={`w-full mt-8 block px-8 py-4 text-white font-bold text-lg rounded-xl shadow-lg transition-all transform hover:scale-[1.02] active:scale-[0.98] flex items-center justify-center gap-2 ${isActive ? 'bg-slate-700 hover:bg-slate-800' : 'bg-gradient-to-r from-sky-500 to-blue-600 hover:from-sky-600 hover:to-blue-700'}`}
+                    className={`w-full py-4 rounded-xl text-white font-bold text-lg shadow-lg transition-all transform active:scale-95 flex items-center justify-center gap-2 ${isActive ? 'bg-slate-700 hover:bg-slate-800' : 'bg-gradient-to-r from-sky-500 to-blue-600 hover:from-sky-600 hover:to-blue-700'}`}
                 >
-                    {isActive ? <>⏸️ Ferma Sessione</> : <>▶️ Inizia Meditazione</>}
+                    {isActive ? "Termina Sessione" : "Inizia Pratica"}
                 </button>
             </div>
-            
-            {/* 
-               CRUCIALE: Questo player audio DEVE rimanere sempre renderizzato.
-               Se l'utente sceglie "Silenzio", riproduce un MP3 vuoto in loop.
-               Questo "inganna" iOS/Android facendo credere che un media sia in riproduzione,
-               mantenendo attivo l'AudioContext per i Ding generati.
-            */}
+
+            {/* Hidden Audio Keeper */}
             <audio 
-                ref={audioRef} 
-                loop
-                playsInline
-                onError={(e) => console.error("Errore background music", e)}
+                ref={backgroundAudioRef} 
+                loop 
+                playsInline 
+                style={{ display: 'none' }}
             />
         </div>
     );
