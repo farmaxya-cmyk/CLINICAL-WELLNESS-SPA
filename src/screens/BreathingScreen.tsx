@@ -20,8 +20,10 @@ const BreathingScreen = () => {
 
     const MUSIC_TRACKS = [
         { label: '🔕 Silenzio (Solo Ding)', value: SILENT_AUDIO_URI },
-        { label: '🎵 Relax (432Hz)', value: 'https://files.catbox.moe/zc81yy.mp3' },
-        { label: '🌊 Onde del Mare', value: 'https://files.catbox.moe/ad01.mp3' },
+        { label: '🎵 Relax (Healing)', value: 'https://files.catbox.moe/zc81yy.mp3' },
+        { label: '🧘 7 Chakra', value: 'https://files.catbox.moe/j5j66e.mp3' },
+        { label: '🧠 Mind', value: 'https://files.catbox.moe/ad01.mp3' },
+        { label: '🔮 Introspezione', value: 'https://files.catbox.moe/w2234a.mp3' },
     ];
 
     const DURATION_OPTIONS = [
