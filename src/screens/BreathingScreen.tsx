@@ -4,10 +4,8 @@ import { LungIcon } from '../components/icons/LungIcon';
 import { EyeIcon } from '../components/icons/EyeIcon';
 import { EyeOffIcon } from '../components/icons/EyeOffIcon';
 
-// CRITICO: Base64 di un MP3 silenzioso. 
-// Usare un file locale garantisce che l'audio parta ISTANTANEAMENTE al click,
-// attivando la sessione audio di iOS senza attendere il buffering di rete.
-const SILENT_AUDIO_URI = "data:audio/mp3;base64,SUQzBAAAAAABAFRYWFgAAAASAAADbWFqb3JfYnJhbmQAbXA0MgBUWFhYAAAAEQAAA21pbm9yX3ZlcnNpb24AMABUWFhYAAAAHAAAA2NvbXBhdGlibGVfYnJhbmRzAGlzb21tcDQyAFRTU0UAAAAPAAADTGF2ZjU3LjU2LjEwMAAAAAAAAAAAAAAA//oeAAAAAAAAAAAAAAAAAAAAAAAASW5mbwAAAA8AAAAJAAAB3AAZGRkZGRkZGRkZGRkZGRkZGRlxcXFxcXFxcXFxcXFxcXFxcXF5eXl5eXl5eXl5eXl5eXl5eXl5/////////////////////wAAADFMYXZjNTcuNjQuMTAwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA//oeAAAAAAAAAAAAAAAAAAAAAAAUDUDAAAAAAAAAAAAAABAAAAAAAAAAAAAA//oeAAAAAAAAAAAAAAAAAAAAAAAUDUDAAAAAAAAAAAAAABAAAAAAAAAAAAAA//oeAAAAAAAAAAAAAAAAAAAAAAAUDUDAAAAAAAAAAAAAABAAAAAAAAAAAAAA//oeAAAAAAAAAAAAAAAAAAAAAAAUDUDAAAAAAAAAAAAAABAAAAAAAAAAAAAA//oeAAAAAAAAAAAAAAAAAAAAAAAUDUDAAAAAAAAAAAAAABAAAAAAAAAAAAAA//oeAAAAAAAAAAAAAAAAAAAAAAAUDUDAAAAAAAAAAAAAABAAAAAAAAAAAAAA";
+// Un WAV silenzioso cortissimo e standard, massimizza la compatibilità iOS per tenere la sessione attiva
+const SILENT_WAV = "data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA";
 
 const BreathingScreen = () => {
     // --- CONFIGURAZIONE ---
@@ -19,7 +17,7 @@ const BreathingScreen = () => {
     };
 
     const MUSIC_TRACKS = [
-        { label: '🔕 Silenzio (Solo Ding)', value: SILENT_AUDIO_URI },
+        { label: '🔕 Silenzio (Solo Ding)', value: SILENT_WAV },
         { label: '🎵 Relax (Healing)', value: 'https://files.catbox.moe/zc81yy.mp3' },
         { label: '🧘 7 Chakra', value: 'https://files.catbox.moe/j5j66e.mp3' },
         { label: '🧠 Mind', value: 'https://files.catbox.moe/ad01.mp3' },
@@ -39,7 +37,7 @@ const BreathingScreen = () => {
     const [musicTrack, setMusicTrack] = React.useState(MUSIC_TRACKS[1].value);
     const [isActive, setIsActive] = React.useState(false);
     
-    // UI Visuale (Separata dall'audio)
+    // UI Visuale
     const [instruction, setInstruction] = React.useState('Pronto');
     const [scale, setScale] = React.useState(0.6);
     const [timeLeft, setTimeLeft] = React.useState(duration);
@@ -50,121 +48,97 @@ const BreathingScreen = () => {
     const [musicVolume, setMusicVolume] = React.useState(0.5);
     const [dingVolume, setDingVolume] = React.useState(0.8);
 
-    // --- REFS PER AUDIO ENGINE ---
+    // --- REFS ---
     const audioCtxRef = React.useRef<AudioContext | null>(null);
     const masterGainRef = React.useRef<GainNode | null>(null);
     const bgAudioRef = React.useRef<HTMLAudioElement>(null);
     const wakeLockRef = React.useRef<any>(null);
-    
-    // Liste per tenere traccia dei nodi audio programmati (per poterli fermare)
     const scheduledNodesRef = React.useRef<AudioScheduledSourceNode[]>([]);
-    
-    // Timer visivi (possono "freezare", non importa, l'audio è gestito a parte)
     const visualTimerRef = React.useRef<any>(null);
     const countdownTimerRef = React.useRef<any>(null);
 
-    // --- 1. WAKE LOCK (Tenta di tenere lo schermo acceso) ---
+    // --- WAKE LOCK ---
     const toggleWakeLock = async (active: boolean) => {
+        if (!('wakeLock' in navigator)) return;
         try {
-            if (active && 'wakeLock' in navigator) {
+            if (active) {
                 wakeLockRef.current = await (navigator as any).wakeLock.request('screen');
-            } else if (!active && wakeLockRef.current) {
+            } else if (wakeLockRef.current) {
                 await wakeLockRef.current.release();
                 wakeLockRef.current = null;
             }
         } catch (err) {
-            console.warn('Wake Lock error:', err);
+            console.warn('Wake Lock error (non critico):', err);
         }
     };
 
-    // --- 2. SINTESI SONORA (Genera Gong) ---
-    // Crea un suono tipo campana tibetana usando oscillatori
+    // --- AUDIO ENGINE ---
     const scheduleDing = (ctx: AudioContext, destination: AudioNode, time: number, pitch: number) => {
-        // Oscillatore Principale (Fondamentale)
-        const osc = ctx.createOscillator();
-        osc.type = 'sine';
-        osc.frequency.value = pitch;
+        try {
+            const osc = ctx.createOscillator();
+            const osc2 = ctx.createOscillator();
+            const gain = ctx.createGain();
+            const gain2 = ctx.createGain();
 
-        // Oscillatore Armonico (Per dare "metallo" al suono)
-        const osc2 = ctx.createOscillator();
-        osc2.type = 'triangle';
-        osc2.frequency.value = pitch * 2.5; 
+            osc.type = 'sine';
+            osc.frequency.value = pitch;
+            osc2.type = 'triangle';
+            osc2.frequency.value = pitch * 2.5; 
 
-        // Gain (Volume Envelope)
-        const gain = ctx.createGain();
-        const gain2 = ctx.createGain();
+            osc.connect(gain);
+            osc2.connect(gain2);
+            gain.connect(destination);
+            gain2.connect(destination);
 
-        // Connessioni
-        osc.connect(gain);
-        osc2.connect(gain2);
-        gain.connect(destination);
-        gain2.connect(destination);
+            const attack = 0.05;
+            const decay = 2.5;
 
-        // Busta del volume (Attack veloce, Release lungo)
-        const attack = 0.05;
-        const decay = 2.5;
+            gain.gain.setValueAtTime(0, time);
+            gain.gain.linearRampToValueAtTime(1, time + attack);
+            gain.gain.exponentialRampToValueAtTime(0.001, time + decay);
 
-        // Programmazione nel futuro
-        gain.gain.setValueAtTime(0, time);
-        gain.gain.linearRampToValueAtTime(1, time + attack);
-        gain.gain.exponentialRampToValueAtTime(0.001, time + decay);
+            gain2.gain.setValueAtTime(0, time);
+            gain2.gain.linearRampToValueAtTime(0.1, time + attack);
+            gain2.gain.exponentialRampToValueAtTime(0.001, time + decay);
 
-        gain2.gain.setValueAtTime(0, time);
-        gain2.gain.linearRampToValueAtTime(0.1, time + attack); // Armonica più bassa
-        gain2.gain.exponentialRampToValueAtTime(0.001, time + decay);
+            osc.start(time);
+            osc.stop(time + decay + 1);
+            osc2.start(time);
+            osc2.stop(time + decay + 1);
 
-        // Start/Stop
-        osc.start(time);
-        osc.stop(time + decay + 1);
-        osc2.start(time);
-        osc2.stop(time + decay + 1);
-
-        // Salviamo i riferimenti per poter stoppare tutto se l'utente preme stop
-        scheduledNodesRef.current.push(osc);
-        scheduledNodesRef.current.push(osc2);
+            scheduledNodesRef.current.push(osc);
+            scheduledNodesRef.current.push(osc2);
+        } catch (e) {
+            console.warn("Errore creazione ding:", e);
+        }
     };
 
-    // --- 3. SCHEDULING (Il cuore anti-freeze) ---
     const scheduleEntireSession = (ctx: AudioContext) => {
         const now = ctx.currentTime;
-        // Aggiungiamo un piccolo ritardo (0.1s) per assicurarci che non sia nel passato
         let cursor = now + 0.1; 
         const endTime = now + duration;
         const pattern = BREATHING_PATTERNS[patternKey];
 
-        // Pulizia array nodi precedenti
         scheduledNodesRef.current = [];
 
-        // Ciclo che calcola TUTTI i respiri da qui alla fine della sessione
-        // E li invia al driver audio in un colpo solo.
         while (cursor < endTime) {
-            
-            // Suono INSPIRA (Tono più alto)
-            scheduleDing(ctx, masterGainRef.current!, cursor, 432); // 432Hz
-
+            scheduleDing(ctx, masterGainRef.current!, cursor, 432); // Inspira
             cursor += pattern.inhale;
-
-            if (pattern.hold > 0) {
-                // Opzionale: suono leggero per il "trattieni" o silenzio
-                cursor += pattern.hold;
-            }
-
-            // Suono ESPIRA (Tono più basso)
+            if (pattern.hold > 0) cursor += pattern.hold;
             if (cursor < endTime) {
-                scheduleDing(ctx, masterGainRef.current!, cursor, 216); // Ottava bassa
+                scheduleDing(ctx, masterGainRef.current!, cursor, 216); // Espira
             }
-
             cursor += pattern.exhale;
         }
     };
 
-    // --- 4. GESTIONE VISUALE (Sincronizzata ma indipendente) ---
-    // Questo gira sul main thread. Se si blocca, l'audio continua comunque.
-    // Quando si sblocca, si riallinea col timer.
+    // --- VISUAL ENGINE ---
     const startVisuals = () => {
         const pattern = BREATHING_PATTERNS[patternKey];
         
         const loop = () => {
+            if (!isActive) return; // Safety check
+            
             setInstruction('Inspira');
             setScale(1);
             
@@ -189,69 +163,73 @@ const BreathingScreen = () => {
                 }
             }, pattern.inhale * 1000);
         };
-
         loop();
     };
 
-    // --- HANDLERS ---
+    // --- MAIN HANDLERS ---
     const handleStart = async () => {
+        // 1. UPDATE UI IMMEDIATAMENTE
+        // Questo garantisce che l'utente veda subito che l'app ha risposto
+        setIsActive(true);
+        setCycles(0);
+        setTimeLeft(duration);
+        toggleWakeLock(true);
+        
+        // Avvia loop visuale
+        // Piccolo timeout per permettere al render di aggiornarsi prima di far partire il loop
+        setTimeout(() => startVisuals(), 50);
+
+        // Avvia timer countdown
+        const endTimeMs = Date.now() + (duration * 1000);
+        if (countdownTimerRef.current) clearInterval(countdownTimerRef.current);
+        countdownTimerRef.current = setInterval(() => {
+            const remaining = Math.ceil((endTimeMs - Date.now()) / 1000);
+            if (remaining <= 0) {
+                handleStop();
+            } else {
+                setTimeLeft(remaining);
+            }
+        }, 1000);
+
+        // 2. AUDIO INIT (in un blocco try-catch separato per non rompere la UI)
         try {
-            // 1. Inizializza AudioContext (deve essere fatto su click utente)
             if (!audioCtxRef.current) {
                 const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
                 audioCtxRef.current = new AudioContextClass();
-                
-                // Crea Master Gain per i Ding
                 const masterGain = audioCtxRef.current.createGain();
                 masterGain.gain.value = dingVolume;
                 masterGain.connect(audioCtxRef.current.destination);
                 masterGainRef.current = masterGain;
             }
 
-            // Resume context (necessario su Chrome/iOS)
+            // Resume è necessario sui browser moderni
             if (audioCtxRef.current?.state === 'suspended') {
                 await audioCtxRef.current.resume();
             }
+        } catch (err) {
+            console.error("Errore inizializzazione AudioContext:", err);
+            // Non blocchiamo, continuiamo
+        }
 
-            // 2. Avvia Background Track (HTML5 Audio)
-            // Questo è fondamentale per iOS: se c'è musica che suona, l'app non viene sospesa
+        // 3. BACKGROUND MUSIC (altro blocco try-catch)
+        try {
             if (bgAudioRef.current) {
-                // Imposta la sorgente. Se l'utente ha scelto "Silenzio", usiamo il base64
-                // che non richiede rete e parte istantaneamente.
                 bgAudioRef.current.src = musicTrack;
                 bgAudioRef.current.volume = musicVolume;
-                
-                // Play deve essere una risposta diretta al click
+                // Play deve essere atteso, ma se fallisce (es. formato non supportato) non deve fermare tutto
                 await bgAudioRef.current.play();
             }
+        } catch (err) {
+            console.error("Errore riproduzione musica:", err);
+        }
 
-            // 3. Programma TUTTI i suoni ora
+        // 4. SCHEDULING DING (altro blocco try-catch)
+        try {
             if (mode === 'closed' && audioCtxRef.current) {
                 scheduleEntireSession(audioCtxRef.current);
             }
-
-            // 4. Avvia UI e WakeLock
-            toggleWakeLock(true);
-            setIsActive(true);
-            setCycles(0);
-            setTimeLeft(duration);
-            
-            startVisuals();
-
-            // Timer per il countdown generale (UI only)
-            const endTimeMs = Date.now() + (duration * 1000);
-            countdownTimerRef.current = setInterval(() => {
-                const remaining = Math.ceil((endTimeMs - Date.now()) / 1000);
-                if (remaining <= 0) {
-                    handleStop();
-                } else {
-                    setTimeLeft(remaining);
-                }
-            }, 1000);
-
-        } catch (error) {
-            console.error("Errore start:", error);
-            alert("Errore avvio audio. Assicurati che il volume sia alto e il tasto silenzioso disattivato.");
+        } catch (err) {
+            console.error("Errore scheduling suoni:", err);
         }
     };
 
@@ -259,19 +237,19 @@ const BreathingScreen = () => {
         setIsActive(false);
         toggleWakeLock(false);
 
-        // Ferma i suoni programmati
+        // Stop nodi audio
         scheduledNodesRef.current.forEach(node => {
             try { node.stop(); node.disconnect(); } catch (e) {}
         });
         scheduledNodesRef.current = [];
 
-        // Ferma musica background
+        // Stop musica
         if (bgAudioRef.current) {
             bgAudioRef.current.pause();
             bgAudioRef.current.currentTime = 0;
         }
 
-        // Pulisce timers
+        // Stop timers
         clearTimeout(visualTimerRef.current);
         clearInterval(countdownTimerRef.current);
 
@@ -280,13 +258,13 @@ const BreathingScreen = () => {
         setScale(0.6);
     };
 
-    // Update volumi in tempo reale
+    // Update volume real-time
     React.useEffect(() => {
         if (masterGainRef.current) masterGainRef.current.gain.value = dingVolume;
         if (bgAudioRef.current) bgAudioRef.current.volume = musicVolume;
     }, [dingVolume, musicVolume]);
 
-    // Cleanup
+    // Cleanup on unmount
     React.useEffect(() => {
         return () => handleStop();
     }, []);
@@ -328,7 +306,7 @@ const BreathingScreen = () => {
                                 setTimeLeft(v);
                             }}
                             disabled={isActive}
-                            className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-slate-700 font-medium"
+                            className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-slate-700 font-medium disabled:opacity-50"
                         >
                             {DURATION_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
                         </select>
@@ -337,7 +315,7 @@ const BreathingScreen = () => {
                             value={patternKey}
                             onChange={(e) => setPatternKey(e.target.value)}
                             disabled={isActive}
-                            className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-slate-700 font-medium"
+                            className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-slate-700 font-medium disabled:opacity-50"
                         >
                             {Object.entries(BREATHING_PATTERNS).map(([key, pat]) => <option key={key} value={key}>{pat.name}</option>)}
                         </select>
@@ -346,7 +324,7 @@ const BreathingScreen = () => {
                             value={musicTrack}
                             onChange={(e) => setMusicTrack(e.target.value)}
                             disabled={isActive}
-                            className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-slate-700 font-medium"
+                            className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-slate-700 font-medium disabled:opacity-50"
                         >
                             {MUSIC_TRACKS.map(track => <option key={track.label} value={track.value}>{track.label}</option>)}
                         </select>
@@ -424,7 +402,7 @@ const BreathingScreen = () => {
                 </button>
             </div>
 
-            {/* AUDIO PLAYER NASCOSTO PER BACKGROUND MODE */}
+            {/* AUDIO PLAYER NASCOSTO */}
             <audio 
                 ref={bgAudioRef} 
                 loop 
