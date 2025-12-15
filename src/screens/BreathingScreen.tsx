@@ -16,6 +16,7 @@ const BreathingScreen = () => {
       training: { name: '6-6 Allenamento', inhale: 6, hold: 0, exhale: 6 },
     };
 
+    // LINK AUDIO ORIGINALI RIPRISTINATI
     const MUSIC_TRACKS = [
         { label: '🔕 Silenzio (Solo Ding)', value: SILENT_WAV },
         { label: '🎵 Relax (Healing)', value: 'https://files.catbox.moe/zc81yy.mp3' },
@@ -217,6 +218,7 @@ const BreathingScreen = () => {
                 bgAudioRef.current.src = musicTrack;
                 bgAudioRef.current.volume = musicVolume;
                 // Play deve essere atteso, ma se fallisce (es. formato non supportato) non deve fermare tutto
+                // Nota: se il file è lento a caricare, play() aspetterà. L'UI è già partita.
                 await bgAudioRef.current.play();
             }
         } catch (err) {
