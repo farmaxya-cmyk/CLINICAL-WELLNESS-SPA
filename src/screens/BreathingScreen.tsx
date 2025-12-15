@@ -16,7 +16,7 @@ const BreathingScreen = () => {
       training: { name: '6-6 Allenamento', inhale: 6, hold: 0, exhale: 6 },
     };
 
-    // LINK AUDIO ORIGINALI RIPRISTINATI
+    // LINK AUDIO ORIGINALI UTENTE
     const MUSIC_TRACKS = [
         { label: '🔕 Silenzio (Solo Ding)', value: SILENT_WAV },
         { label: '🎵 Relax (Healing)', value: 'https://files.catbox.moe/zc81yy.mp3' },
@@ -37,6 +37,7 @@ const BreathingScreen = () => {
     const [patternKey, setPatternKey] = React.useState('coherence');
     const [musicTrack, setMusicTrack] = React.useState(MUSIC_TRACKS[1].value);
     const [isActive, setIsActive] = React.useState(false);
+    const [audioError, setAudioError] = React.useState('');
     
     // UI Visuale
     const [instruction, setInstruction] = React.useState('Pronto');
@@ -170,14 +171,13 @@ const BreathingScreen = () => {
     // --- MAIN HANDLERS ---
     const handleStart = async () => {
         // 1. UPDATE UI IMMEDIATAMENTE
-        // Questo garantisce che l'utente veda subito che l'app ha risposto
         setIsActive(true);
         setCycles(0);
         setTimeLeft(duration);
+        setAudioError('');
         toggleWakeLock(true);
         
         // Avvia loop visuale
-        // Piccolo timeout per permettere al render di aggiornarsi prima di far partire il loop
         setTimeout(() => startVisuals(), 50);
 
         // Avvia timer countdown
@@ -192,7 +192,7 @@ const BreathingScreen = () => {
             }
         }, 1000);
 
-        // 2. AUDIO INIT (in un blocco try-catch separato per non rompere la UI)
+        // 2. AUDIO INIT 
         try {
             if (!audioCtxRef.current) {
                 const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
@@ -203,29 +203,33 @@ const BreathingScreen = () => {
                 masterGainRef.current = masterGain;
             }
 
-            // Resume è necessario sui browser moderni
             if (audioCtxRef.current?.state === 'suspended') {
                 await audioCtxRef.current.resume();
             }
         } catch (err) {
             console.error("Errore inizializzazione AudioContext:", err);
-            // Non blocchiamo, continuiamo
         }
 
-        // 3. BACKGROUND MUSIC (altro blocco try-catch)
+        // 3. BACKGROUND MUSIC
         try {
             if (bgAudioRef.current) {
                 bgAudioRef.current.src = musicTrack;
                 bgAudioRef.current.volume = musicVolume;
-                // Play deve essere atteso, ma se fallisce (es. formato non supportato) non deve fermare tutto
-                // Nota: se il file è lento a caricare, play() aspetterà. L'UI è già partita.
-                await bgAudioRef.current.play();
+                // RIMOSSO: crossOrigin = "anonymous" per evitare blocchi CORS sui file diretti
+                
+                const playPromise = bgAudioRef.current.play();
+                if (playPromise !== undefined) {
+                    playPromise.catch(error => {
+                        console.error("Errore riproduzione musica:", error);
+                        setAudioError("Impossibile riprodurre la traccia audio. Controlla la connessione.");
+                    });
+                }
             }
         } catch (err) {
-            console.error("Errore riproduzione musica:", err);
+            console.error("Errore setup musica:", err);
         }
 
-        // 4. SCHEDULING DING (altro blocco try-catch)
+        // 4. SCHEDULING DING
         try {
             if (mode === 'closed' && audioCtxRef.current) {
                 scheduleEntireSession(audioCtxRef.current);
@@ -355,6 +359,12 @@ const BreathingScreen = () => {
                     </div>
                 </div>
 
+                {audioError && (
+                    <div className="mb-6 p-3 bg-red-100 text-red-700 text-sm rounded-lg text-center font-medium">
+                        {audioError}
+                    </div>
+                )}
+
                 {/* ANIMAZIONE */}
                 <div className="relative w-72 h-72 mx-auto my-8 flex items-center justify-center">
                     <div className={`absolute inset-0 bg-sky-200 rounded-full blur-2xl opacity-30 transition-transform duration-[4000ms] ${isActive ? 'scale-110' : 'scale-100'}`}></div>
@@ -409,7 +419,10 @@ const BreathingScreen = () => {
                 ref={bgAudioRef} 
                 loop 
                 playsInline 
-                // Su iOS questo DEVE essere visibile logicamente anche se hidden con CSS
+                onError={(e) => {
+                    console.error("Audio tag error:", e);
+                    if(isActive) setAudioError("Errore caricamento audio");
+                }}
                 style={{ display: 'none' }}
             />
         </div>

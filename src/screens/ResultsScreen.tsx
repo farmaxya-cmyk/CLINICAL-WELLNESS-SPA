@@ -65,16 +65,13 @@ const ResultsScreen = ({ assessment, score, answers, onRetake, onBackToHome }) =
             setPhaseResults(computedResults);
 
             // --- CALCOLO FORMULAZIONE GALENICA ---
-            // 1. Identifica le fasi critiche (non adeguate)
             const phasesArray = Object.keys(computedResults).map(key => ({
                 name: key,
                 ...computedResults[key]
             }));
             
-            // Ordina per percentuale crescente (dal peggiore al migliore)
             phasesArray.sort((a, b) => a.percentage - b.percentage);
 
-            // Prendi le prime 2 fasi che non sono 'Adeguato'
             const criticalPhases = phasesArray.filter(p => p.status !== 'Adeguato').slice(0, 2);
 
             if (criticalPhases.length > 0) {
@@ -104,38 +101,55 @@ const ResultsScreen = ({ assessment, score, answers, onRetake, onBackToHome }) =
 
     const handleDownloadTxt = () => {
         const date = new Date().toLocaleDateString('it-IT');
-        let content = `CLINICAL WELLNESS SPA - RISULTATO TEST\n\n` +
-            `Test: ${assessment.title}\n` +
-            `Data: ${date}\n` +
-            `Punteggio Totale: ${score}\n\n` +
-            `Risultato: ${result.title}\n\n` +
-            `Analisi Generale:\n${result.summary}\n\n`;
+        let content = `=================================================\n`;
+        content += `   CLINICAL WELLNESS SPA - REPORT DI ANALISI\n`;
+        content += `=================================================\n\n`;
+        
+        content += `TEST ESEGUITO: ${assessment.title.toUpperCase()}\n`;
+        content += `DATA: ${date}\n`;
+        content += `PUNTEGGIO TOTALE: ${score}\n\n`;
+        content += `RISULTATO SINTETICO: ${result.title}\n`;
+        content += `-------------------------------------------------\n\n`;
+        content += `ANALISI GENERALE:\n${result.summary}\n\n`;
 
         if (isSleepAnalysis && phaseResults) {
-            content += `--- DETTAGLIO FASI DEL SONNO ---\n`;
+            content += `=================================================\n`;
+            content += `   DETTAGLIO FASI DEL SONNO (ARCHITETTURA)\n`;
+            content += `=================================================\n\n`;
+            
             Object.keys(phaseResults).forEach(phase => {
                 const res = phaseResults[phase];
-                content += `${phase}: ${res.status} (${res.percentage}%)\n`;
+                content += `${phase.toUpperCase()}: ${res.percentage}% - ${res.status}\n`;
+                const info = assessment.phaseRemedies?.[phase];
+                if (info) content += `> Nota: ${info.description}\n`;
+                content += `\n`;
             });
 
             if (galenicFormulation) {
-                content += `\n--- CONSIGLIO TERAPEUTICO ---\n`;
-                content += `Formulazione Galenica Personalizzata (Target: ${galenicFormulation.phases.join(', ')})\n`;
-                content += `Ingredienti: ${galenicFormulation.ingredients.join(', ')}\n`;
-                content += `Posologia: ${galenicFormulation.dosage}\n`;
+                content += `-------------------------------------------------\n`;
+                content += `   CONSIGLIO TERAPEUTICO PERSONALIZZATO\n`;
+                content += `-------------------------------------------------\n`;
+                content += `Obiettivo Target: ${galenicFormulation.phases.join(', ')}\n\n`;
+                content += `FORMULAZIONE GALENICA SUGGERITA:\n`;
+                content += `[ ] ${galenicFormulation.ingredients.join(' + ')}\n\n`;
+                content += `Posologia consigliata: ${galenicFormulation.dosage}\n`;
+                content += `(Richiedi questa preparazione al banco farmacia)\n\n`;
             }
 
-            content += `\n--- CONSIGLI POLISONNOGRAFIA ---\n`;
-            content += `Consigliata in caso di sintomi persistenti, apnee sospette o difficoltà diagnostiche.\n`;
+            content += `-------------------------------------------------\n`;
+            content += `   CONSIGLI STRUMENTALI\n`;
+            content += `-------------------------------------------------\n`;
+            content += `POLISONNOGRAFIA: Consigliata in caso di sintomi persistenti,\napnee notturne sospette o se il punteggio totale è inferiore a 40.\n`;
         }
 
-        content += `\nNota: Questo documento è generato automaticamente e non sostituisce un parere medico professionale.`;
+        content += `\n=================================================\n`;
+        content += `Nota Legale: Questo documento è generato da un algoritmo di \nautovalutazione. Non costituisce diagnosi medica. \nConsultare sempre uno specialista.`;
 
         const blob = new Blob(["\uFEFF" + content], { type: 'text/plain;charset=utf-8' });
         const url = URL.createObjectURL(blob);
         const link = document.createElement('a');
         link.href = url;
-        link.download = `Risultato_${assessment.id}_${date.replace(/\//g, '-')}.txt`;
+        link.download = `Report_${assessment.id}_${date.replace(/\//g, '-')}.txt`;
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
@@ -232,10 +246,10 @@ const ResultsScreen = ({ assessment, score, answers, onRetake, onBackToHome }) =
                     </button>
                     <button
                         onClick={handleDownloadTxt}
-                        className="px-6 py-3 bg-emerald-500 text-white font-semibold rounded-lg hover:bg-emerald-600 transition-colors flex items-center justify-center gap-2"
+                        className="px-6 py-3 bg-emerald-500 text-white font-semibold rounded-lg hover:bg-emerald-600 transition-colors flex items-center justify-center gap-2 shadow-lg hover:shadow-emerald-500/30"
                     >
                         <DownloadIcon className="w-5 h-5" />
-                        Scarica Report (.txt)
+                        Scarica Report Completo (.txt)
                     </button>
                     <button
                         onClick={onBackToHome}
