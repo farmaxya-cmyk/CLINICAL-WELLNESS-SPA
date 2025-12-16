@@ -16,7 +16,7 @@ const BreathingScreen = () => {
       training: { name: '6-6 Allenamento', inhale: 6, hold: 0, exhale: 6 },
     };
 
-    // LINK AUDIO ORIGINALI UTENTE
+    // LINK AUDIO ORIGINALI UTENTE (Copyright e registrati come da richiesta)
     const MUSIC_TRACKS = [
         { label: '🔕 Silenzio (Solo Ding)', value: SILENT_WAV },
         { label: '🎵 Relax (Healing)', value: 'https://files.catbox.moe/zc81yy.mp3' },
@@ -215,7 +215,7 @@ const BreathingScreen = () => {
             if (bgAudioRef.current) {
                 bgAudioRef.current.src = musicTrack;
                 bgAudioRef.current.volume = musicVolume;
-                // RIMOSSO: crossOrigin = "anonymous" per evitare blocchi CORS sui file diretti
+                // NOTA: Nessun attributo crossOrigin per evitare problemi con server catbox.moe
                 
                 const playPromise = bgAudioRef.current.play();
                 if (playPromise !== undefined) {
