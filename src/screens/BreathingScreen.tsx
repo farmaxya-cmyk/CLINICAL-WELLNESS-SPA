@@ -4,7 +4,7 @@ import { LungIcon } from '../components/icons/LungIcon';
 import { EyeIcon } from '../components/icons/EyeIcon';
 import { EyeOffIcon } from '../components/icons/EyeOffIcon';
 
-// Un WAV silenzioso cortissimo e standard, massimizza la compatibilità iOS per tenere la sessione attiva
+// Un WAV silenzioso cortissimo e standard per mantenere attivo il contesto audio su mobile
 const SILENT_WAV = "data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA";
 
 const BreathingScreen = () => {
@@ -16,7 +16,7 @@ const BreathingScreen = () => {
       training: { name: '6-6 Allenamento', inhale: 6, hold: 0, exhale: 6 },
     };
 
-    // LINK AUDIO ORIGINALI UTENTE (Copyright e registrati come da richiesta)
+    // LINK AUDIO ORIGINALI
     const MUSIC_TRACKS = [
         { label: '🔕 Silenzio (Solo Ding)', value: SILENT_WAV },
         { label: '🎵 Relax (Healing)', value: 'https://files.catbox.moe/zc81yy.mp3' },
@@ -70,11 +70,11 @@ const BreathingScreen = () => {
                 wakeLockRef.current = null;
             }
         } catch (err) {
-            console.warn('Wake Lock error (non critico):', err);
+            console.warn('Wake Lock non disponibile:', err);
         }
     };
 
-    // --- AUDIO ENGINE ---
+    // --- AUDIO ENGINE (DING) ---
     const scheduleDing = (ctx: AudioContext, destination: AudioNode, time: number, pitch: number) => {
         try {
             const osc = ctx.createOscillator();
@@ -139,7 +139,7 @@ const BreathingScreen = () => {
         const pattern = BREATHING_PATTERNS[patternKey];
         
         const loop = () => {
-            if (!isActive) return; // Safety check
+            if (!isActive) return;
             
             setInstruction('Inspira');
             setScale(1);
@@ -170,17 +170,14 @@ const BreathingScreen = () => {
 
     // --- MAIN HANDLERS ---
     const handleStart = async () => {
-        // 1. UPDATE UI IMMEDIATAMENTE
         setIsActive(true);
         setCycles(0);
         setTimeLeft(duration);
         setAudioError('');
         toggleWakeLock(true);
         
-        // Avvia loop visuale
         setTimeout(() => startVisuals(), 50);
 
-        // Avvia timer countdown
         const endTimeMs = Date.now() + (duration * 1000);
         if (countdownTimerRef.current) clearInterval(countdownTimerRef.current);
         countdownTimerRef.current = setInterval(() => {
@@ -192,7 +189,7 @@ const BreathingScreen = () => {
             }
         }, 1000);
 
-        // 2. AUDIO INIT 
+        // 2. AUDIO INIT (DING)
         try {
             if (!audioCtxRef.current) {
                 const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
@@ -207,21 +204,31 @@ const BreathingScreen = () => {
                 await audioCtxRef.current.resume();
             }
         } catch (err) {
-            console.error("Errore inizializzazione AudioContext:", err);
+            console.error("Errore AudioContext:", err);
         }
 
         // 3. BACKGROUND MUSIC
         try {
             if (bgAudioRef.current) {
-                bgAudioRef.current.src = musicTrack;
+                // Imposta volume prima del play
                 bgAudioRef.current.volume = musicVolume;
-                // NOTA: Nessun attributo crossOrigin per evitare problemi con server catbox.moe
+                
+                // NOTA CRITICA: Non resettare src se è già corretto per evitare interruzioni
+                if (bgAudioRef.current.src !== musicTrack) {
+                    bgAudioRef.current.src = musicTrack;
+                }
+                
+                // Nessun attributo crossOrigin qui, evita ORB
+                bgAudioRef.current.load();
                 
                 const playPromise = bgAudioRef.current.play();
                 if (playPromise !== undefined) {
                     playPromise.catch(error => {
-                        console.error("Errore riproduzione musica:", error);
-                        setAudioError("Impossibile riprodurre la traccia audio. Controlla la connessione.");
+                        console.error("Errore play audio:", error);
+                        // Non mostriamo errore all'utente se è solo interruzione, ma logghiamo
+                        if (error.name !== 'AbortError') {
+                             setAudioError("Impossibile avviare la musica.");
+                        }
                     });
                 }
             }
@@ -235,7 +242,7 @@ const BreathingScreen = () => {
                 scheduleEntireSession(audioCtxRef.current);
             }
         } catch (err) {
-            console.error("Errore scheduling suoni:", err);
+            console.error("Errore scheduling:", err);
         }
     };
 
@@ -243,19 +250,19 @@ const BreathingScreen = () => {
         setIsActive(false);
         toggleWakeLock(false);
 
-        // Stop nodi audio
+        // Stop Dings
         scheduledNodesRef.current.forEach(node => {
             try { node.stop(); node.disconnect(); } catch (e) {}
         });
         scheduledNodesRef.current = [];
 
-        // Stop musica
+        // Stop Music
         if (bgAudioRef.current) {
             bgAudioRef.current.pause();
             bgAudioRef.current.currentTime = 0;
         }
 
-        // Stop timers
+        // Stop Timers
         clearTimeout(visualTimerRef.current);
         clearInterval(countdownTimerRef.current);
 
@@ -270,7 +277,7 @@ const BreathingScreen = () => {
         if (bgAudioRef.current) bgAudioRef.current.volume = musicVolume;
     }, [dingVolume, musicVolume]);
 
-    // Cleanup on unmount
+    // Cleanup
     React.useEffect(() => {
         return () => handleStop();
     }, []);
@@ -336,7 +343,6 @@ const BreathingScreen = () => {
                         </select>
                     </div>
 
-                    {/* Volume Controls */}
                     <div className="space-y-3 pt-2">
                         <div className="flex items-center gap-3">
                             <span className="text-xs font-bold text-slate-400 w-12">Musica</span>
@@ -360,8 +366,8 @@ const BreathingScreen = () => {
                 </div>
 
                 {audioError && (
-                    <div className="mb-6 p-3 bg-red-100 text-red-700 text-sm rounded-lg text-center font-medium">
-                        {audioError}
+                    <div className="mb-6 p-3 bg-red-100 text-red-700 text-sm rounded-lg text-center font-medium animate-pulse">
+                        ⚠️ {audioError}
                     </div>
                 )}
 
@@ -373,7 +379,6 @@ const BreathingScreen = () => {
                         className="w-full h-full bg-gradient-to-br from-sky-400 to-blue-600 rounded-full shadow-2xl flex items-center justify-center transition-all ease-in-out z-10 relative"
                         style={{ 
                             transform: `scale(${scale})`,
-                            // Usiamo CSS transition per rendere fluido il movimento anche se JS lagga
                             transitionDuration: isActive 
                                 ? (instruction === 'Inspira' ? `${BREATHING_PATTERNS[patternKey].inhale}s` : `${BREATHING_PATTERNS[patternKey].exhale}s`) 
                                 : '0.5s'
@@ -392,7 +397,6 @@ const BreathingScreen = () => {
                     </div>
                 </div>
 
-                {/* STATISTICHE */}
                 <div className="flex justify-between items-center px-6 mb-8">
                     <div className="text-center">
                         <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Cicli</p>
@@ -414,16 +418,17 @@ const BreathingScreen = () => {
                 </button>
             </div>
 
-            {/* AUDIO PLAYER NASCOSTO */}
+            {/* ELEMENTO AUDIO */}
             <audio 
                 ref={bgAudioRef} 
                 loop 
-                playsInline 
-                onError={(e) => {
-                    console.error("Audio tag error:", e);
-                    if(isActive) setAudioError("Errore caricamento audio");
-                }}
+                playsInline
+                // RIMOSSO crossOrigin="anonymous" per evitare ORB blocking su catbox.moe
                 style={{ display: 'none' }}
+                onError={(e) => {
+                    console.log("Audio tag error details:", e);
+                    if(isActive) setAudioError("Errore stream audio (Rete).");
+                }}
             />
         </div>
     );

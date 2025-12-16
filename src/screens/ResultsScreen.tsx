@@ -2,8 +2,6 @@
 import React from 'react';
 import { marked } from 'marked';
 import { DownloadIcon } from '../components/icons/DownloadIcon';
-import { CheckCircleIcon } from '../components/icons/CheckCircleIcon';
-import { XCircleIcon } from '../components/icons/XCircleIcon';
 import { BeakerIcon } from '../components/icons/BeakerIcon';
 
 interface PhaseResult {

@@ -1,19 +1,20 @@
 
-const CACHE_NAME = 'clinical-wellness-v6';
+const CACHE_NAME = 'clinical-wellness-v8-audio-fix';
 const urlsToCache = [
   '/',
   '/index.html',
-  '/index.tsx',
   '/manifest.json'
 ];
 
 self.addEventListener('install', (event) => {
-  // Forza il nuovo service worker a diventare attivo immediatamente
   self.skipWaiting();
   event.waitUntil(
     caches.open(CACHE_NAME)
       .then((cache) => {
-        return cache.addAll(urlsToCache);
+        // Tenta di cachare i file base, ma non bloccare l'installazione se fallisce (es. in dev)
+        return cache.addAll(urlsToCache).catch(err => {
+            console.log('Cache install warning (non-critical):', err);
+        });
       })
   );
 });
@@ -21,24 +22,38 @@ self.addEventListener('install', (event) => {
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
 
-  // CRITICO: Ignora richieste di sviluppo Vite e Hot Module Replacement
-  // Questo previene il blocco (White Screen) in localhost se il SW è attivo
+  // 1. IGNORA FILE AUDIO E MEDIA (Evita problemi ORB/CORB con server esterni come catbox)
+  if (url.pathname.endsWith('.mp3') || url.pathname.endsWith('.wav') || url.pathname.endsWith('.ogg')) {
+    return; // Lascia che il browser gestisca la richiesta direttamente via rete
+  }
+
+  // 2. IGNORA RICHIESTE DI SVILUPPO VITE/REACT
   if (
     url.pathname.startsWith('/@') || 
+    url.pathname.startsWith('/src') || 
     url.pathname.startsWith('/node_modules') || 
-    url.pathname.includes('chrome-extension') ||
-    url.port === '5173' // Porta standard di Vite
+    url.port === '5173' ||
+    url.protocol.startsWith('chrome-extension')
   ) {
     return;
   }
 
+  // 3. STRATEGIA NETWORK-FIRST CON FALLBACK CACHE
   event.respondWith(
-    caches.match(event.request)
+    fetch(event.request)
       .then((response) => {
-        if (response) {
-          return response;
+        // Se la risposta è valida e siamo sulla stessa origine, aggiorna la cache
+        if (response && response.status === 200 && response.type === 'basic' && event.request.method === 'GET') {
+            const responseToCache = response.clone();
+            caches.open(CACHE_NAME).then((cache) => {
+                cache.put(event.request, responseToCache);
+            });
         }
-        return fetch(event.request);
+        return response;
+      })
+      .catch(() => {
+        // Se siamo offline o la rete fallisce, prova la cache
+        return caches.match(event.request);
       })
   );
 });
@@ -50,13 +65,11 @@ self.addEventListener('activate', (event) => {
       return Promise.all(
         cacheNames.map((cacheName) => {
           if (cacheWhitelist.indexOf(cacheName) === -1) {
-            // Cancella le vecchie cache per mostrare le modifiche
             return caches.delete(cacheName);
           }
         })
       );
     }).then(() => {
-      // Notifica i client che il SW è attivo
       return self.clients.claim();
     })
   );
