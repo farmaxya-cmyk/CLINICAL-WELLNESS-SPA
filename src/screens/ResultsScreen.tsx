@@ -4,189 +4,91 @@ import { marked } from 'marked';
 import { DownloadIcon } from '../components/icons/DownloadIcon';
 import { BeakerIcon } from '../components/icons/BeakerIcon';
 
-interface PhaseResult {
-    current: number;
-    max: number;
-    percentage: number;
-    status: 'Insufficienza rilevata' | 'Insufficienza lieve' | 'Adeguato';
-    color: string;
-}
-
 const ResultsScreen = ({ assessment, score, answers, onRetake, onBackToHome }) => {
     const result = assessment.results.find(r => score >= r.scoreMin && score <= r.scoreMax) 
         || assessment.results.sort((a,b) => a.scoreMin - b.scoreMin)[0];
 
-    // --- LOGICA ANALISI DEL SONNO ---
-    const isSleepAnalysis = assessment.id === 'sleep' && answers;
-    const [phaseResults, setPhaseResults] = React.useState<Record<string, PhaseResult> | null>(null);
-    const [galenicFormulation, setGalenicFormulation] = React.useState<{ingredients: string[], dosage: string, phases: string[]} | null>(null);
+    const isSleep = assessment.id === 'sleep' && answers;
+    const [phaseData, setPhaseData] = React.useState<any>(null);
+    const [galenic, setGalenic] = React.useState<any>(null);
 
     React.useEffect(() => {
-        if (isSleepAnalysis) {
-            const phases = {
-                "Fase 1": { current: 0, max: 0 },
-                "Fase 2": { current: 0, max: 0 },
-                "Fase 3-4": { current: 0, max: 0 },
-                "REM": { current: 0, max: 0 }
-            };
+        if (isSleep) {
+            const phases: any = { "Fase 1": 0, "Fase 2": 0, "Fase 3-4": 0, "REM": 0 };
+            const counts: any = { "Fase 1": 0, "Fase 2": 0, "Fase 3-4": 0, "REM": 0 };
 
-            assessment.questions.forEach((q, index) => {
-                const answerValue = answers[index] || 0;
-                const targetPhases = q.phase ? q.phase.split(' / ').map(p => p.trim()) : [];
-                
-                targetPhases.forEach(p => {
-                    if (phases[p]) {
-                        phases[p].current += answerValue;
-                        phases[p].max += 4; // Massimo 4 punti per domanda
-                    }
-                });
+            assessment.questions.forEach((q, i) => {
+                const val = answers[i] || 0;
+                const pList = q.phase ? q.phase.split('/').map(s => s.trim()) : [];
+                pList.forEach(p => { if(phases[p] !== undefined) { phases[p] += val; counts[p] += 4; } });
             });
 
-            const computedResults: Record<string, PhaseResult> = {};
-            Object.keys(phases).forEach(key => {
-                const p = phases[key];
-                const percentage = p.max > 0 ? Math.round((p.current / p.max) * 100) : 0;
-                let status: PhaseResult['status'] = 'Adeguato';
-                let color = 'text-green-600 bg-green-50';
-
-                if (percentage < 60) {
-                    status = 'Insufficienza rilevata';
-                    color = 'text-red-600 bg-red-50';
-                } else if (percentage < 75) {
-                    status = 'Insufficienza lieve';
-                    color = 'text-yellow-600 bg-yellow-50';
-                }
-
-                computedResults[key] = { current: p.current, max: p.max, percentage, status, color };
+            const results = Object.keys(phases).map(k => {
+                const perc = counts[k] > 0 ? Math.round((phases[k]/counts[k])*100) : 100;
+                return { name: k, percentage: perc, status: perc < 60 ? 'Insufficienza rilevata' : perc < 75 ? 'Lieve' : 'Adeguato' };
             });
-            setPhaseResults(computedResults);
+            setPhaseData(results);
 
-            // Calcolo Galenica
-            const phasesArray = Object.keys(computedResults).map(key => ({
-                name: key,
-                ...computedResults[key]
-            }));
-            phasesArray.sort((a, b) => a.percentage - b.percentage);
-            const criticalPhases = phasesArray.filter(p => p.status !== 'Adeguato').slice(0, 2);
-
-            if (criticalPhases.length > 0) {
-                const uniqueRemedies = new Set<string>();
-                criticalPhases.forEach(p => {
-                    const phaseInfo = assessment.phaseRemedies?.[p.name];
-                    if (phaseInfo && phaseInfo.remedies) {
-                        phaseInfo.remedies.forEach((r: string) => uniqueRemedies.add(r));
-                    }
-                });
-
-                if (uniqueRemedies.size > 0) {
-                    setGalenicFormulation({
-                        ingredients: Array.from(uniqueRemedies),
-                        dosage: "1-2 capsule la sera prima di dormire",
-                        phases: criticalPhases.map(p => p.name)
-                    });
-                }
+            const critical = [...results].sort((a,b) => a.percentage - b.percentage).filter(p => p.percentage < 75).slice(0,2);
+            if (critical.length > 0) {
+                const remedies = new Set();
+                critical.forEach(c => assessment.phaseRemedies?.[c.name]?.remedies?.forEach(r => remedies.add(r)));
+                setGalenic({ ingredients: Array.from(remedies), phases: critical.map(c => c.name) });
             }
         }
-    }, [isSleepAnalysis, answers, assessment]);
+    }, [isSleep, answers, assessment]);
 
-
-    const handleDownloadTxt = () => {
-        const date = new Date().toLocaleDateString('it-IT');
-        let content = `=================================================\n`;
-        content += `   CLINICAL WELLNESS SPA - REPORT DI ANALISI\n`;
-        content += `=================================================\n\n`;
+    const downloadTxt = () => {
+        let txt = `REPORT CLINICAL WELLNESS SPA\nTest: ${assessment.title}\nData: ${new Date().toLocaleDateString()}\nPunteggio: ${score}/80\n\nRISULTATO: ${result.title}\n${result.summary.replace(/<[^>]*>?/gm, '')}\n\n`;
         
-        content += `TEST ESEGUITO: ${assessment.title.toUpperCase()}\n`;
-        content += `DATA: ${date}\n`;
-        content += `PUNTEGGIO TOTALE: ${score}\n\n`;
-        content += `RISULTATO: ${result.title}\n`;
-        content += `-------------------------------------------------\n\n`;
-        content += `ANALISI:\n${result.summary}\n\n`;
-
-        if (isSleepAnalysis && phaseResults) {
-            content += `=================================================\n`;
-            content += `   DETTAGLIO ARCHITETTURA DEL SONNO\n`;
-            content += `=================================================\n\n`;
-            
-            Object.keys(phaseResults).forEach(phase => {
-                const res = phaseResults[phase];
-                content += `${phase.toUpperCase()}: ${res.percentage}% - ${res.status}\n`;
-            });
-
-            if (galenicFormulation) {
-                content += `\n-------------------------------------------------\n`;
-                content += `   CONSIGLIO GALENICO PERSONALIZZATO\n`;
-                content += `-------------------------------------------------\n`;
-                content += `Target: ${galenicFormulation.phases.join(', ')}\n\n`;
-                content += `FORMULA SUGGERITA:\n`;
-                content += `[ ] ${galenicFormulation.ingredients.join(' + ')}\n\n`;
-                content += `Posologia: ${galenicFormulation.dosage}\n`;
-                content += `(Richiedi al laboratorio della Farmacia Centrale)\n`;
+        if (phaseData) {
+            txt += `ARCHITETTURA DEL SONNO:\n`;
+            phaseData.forEach(p => txt += `- ${p.name}: ${p.percentage}% (${p.status})\n`);
+            if (galenic) {
+                txt += `\nFORMULA GALENICA CONSIGLIATA:\nTarget: ${galenic.phases.join(', ')}\nComposizione: ${galenic.ingredients.join(' + ')}\nPosologia: 1-2 cps la sera.\n`;
             }
         }
-
-        content += `\n=================================================\n`;
-        content += `Disclaimer: Algoritmo di autovalutazione. Non sostituisce il parere medico.`;
-
-        const blob = new Blob(["\uFEFF" + content], { type: 'text/plain;charset=utf-8' });
-        const url = URL.createObjectURL(blob);
+        
+        const blob = new Blob([txt], { type: 'text/plain' });
         const link = document.createElement('a');
-        link.href = url;
-        link.download = `Report_${assessment.id}_${date.replace(/\//g, '-')}.txt`;
-        document.body.appendChild(link);
+        link.href = URL.createObjectURL(blob);
+        link.download = `Wellness_Report_${assessment.id}.txt`;
         link.click();
-        document.body.removeChild(link);
     };
 
     return (
-        <div className="p-4 md:p-8 text-center animate-fade-in pb-32">
-            <div className="bg-white p-8 rounded-2xl shadow-lg max-w-3xl mx-auto">
-                <h2 className="text-3xl font-bold text-slate-800 mb-2">{result.title}</h2>
-                <p className="text-lg text-slate-600 mb-6">Punteggio: <span className="font-bold text-sky-600">{score}</span></p>
+        <div className="p-4 md:p-8 animate-fade-in pb-32">
+            <div className="bg-white p-8 rounded-3xl shadow-xl max-w-3xl mx-auto border border-slate-100">
+                <h2 className="text-3xl font-extrabold text-slate-800 mb-2">{result.title}</h2>
+                <p className="text-sky-600 font-bold text-xl mb-6">Punteggio: {score}</p>
                 
-                <div className="prose text-slate-700 text-left my-6 mx-auto bg-slate-50 p-4 rounded-xl border border-slate-100" dangerouslySetInnerHTML={{ __html: marked.parse(result.summary) as string }}></div>
+                <div className="prose prose-slate text-left bg-slate-50 p-6 rounded-2xl mb-8" dangerouslySetInnerHTML={{ __html: marked.parse(result.summary) as string }}></div>
 
-                {isSleepAnalysis && phaseResults && assessment.phaseRemedies && (
-                    <div className="mt-8 text-left">
-                        <h3 className="text-xl font-bold text-slate-800 mb-4 border-b pb-2">Analisi Fasi del Sonno</h3>
-                        <div className="space-y-4">
-                            {Object.keys(phaseResults).map(phase => {
-                                const res = phaseResults[phase];
-                                return (
-                                    <div key={phase} className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
-                                        <div className="flex justify-between items-center mb-2">
-                                            <h4 className="font-bold text-slate-700">{phase}</h4>
-                                            <span className={`text-xs font-bold px-2 py-1 rounded-full uppercase ${res.color}`}>{res.status}</span>
-                                        </div>
-                                        <div className="w-full bg-slate-100 rounded-full h-2">
-                                            <div className={`h-2 rounded-full transition-all duration-1000 ${res.percentage < 60 ? 'bg-red-500' : res.percentage < 75 ? 'bg-yellow-500' : 'bg-green-500'}`} style={{ width: `${res.percentage}%` }}></div>
-                                        </div>
-                                    </div>
-                                );
-                            })}
-                        </div>
-
-                        {galenicFormulation && (
-                            <div className="mt-8 bg-indigo-50 p-6 rounded-xl border border-indigo-100 shadow-md">
-                                <div className="flex items-center gap-3 mb-4">
-                                    <BeakerIcon className="w-6 h-6 text-indigo-600" />
-                                    <h3 className="text-lg font-bold text-indigo-900">Formulazione Galenica Suggerita</h3>
-                                </div>
-                                <div className="flex flex-wrap gap-2 mb-4">
-                                    {galenicFormulation.ingredients.map((ing, i) => (
-                                        <span key={i} className="px-3 py-1 bg-white border border-indigo-200 rounded-full text-sm font-semibold text-indigo-700 shadow-sm">{ing}</span>
-                                    ))}
-                                </div>
-                                <p className="text-sm font-bold text-indigo-900">Posologia: <span className="font-normal">{galenicFormulation.dosage}</span></p>
+                {phaseData && (
+                    <div className="text-left mb-8 space-y-4">
+                        <h3 className="text-xl font-bold text-slate-800 border-b pb-2">Dettaglio Fasi del Sonno</h3>
+                        {phaseData.map(p => (
+                            <div key={p.name}>
+                                <div className="flex justify-between text-sm font-bold mb-1"><span>{p.name}</span><span className={p.percentage < 60 ? 'text-red-500' : 'text-emerald-600'}>{p.percentage}%</span></div>
+                                <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden"><div className={`h-full transition-all duration-1000 ${p.percentage < 60 ? 'bg-red-500' : 'bg-emerald-500'}`} style={{ width: `${p.percentage}%` }}></div></div>
                             </div>
-                        )}
+                        ))}
                     </div>
                 )}
 
-                 <div className="flex flex-col sm:flex-row justify-center gap-4 mt-10">
-                    <button onClick={onRetake} className="px-6 py-3 bg-slate-200 text-slate-800 font-semibold rounded-lg hover:bg-slate-300">Ripeti il test</button>
-                    <button onClick={handleDownloadTxt} className="px-6 py-3 bg-emerald-500 text-white font-semibold rounded-lg hover:bg-emerald-600 flex items-center justify-center gap-2 shadow-lg"><DownloadIcon className="w-5 h-5" /> Scarica Report (.txt)</button>
-                    <button onClick={onBackToHome} className="px-6 py-3 bg-sky-600 text-white font-semibold rounded-lg hover:bg-sky-700">Torna alla Home</button>
+                {galenic && (
+                    <div className="bg-indigo-600 text-white p-6 rounded-2xl shadow-lg mb-8 text-left">
+                        <div className="flex items-center gap-3 mb-3"><BeakerIcon className="w-6 h-6"/> <h3 className="text-lg font-bold">Formula Galenica Personalizzata</h3></div>
+                        <p className="text-indigo-100 text-sm mb-4">Ottimizzata per le fasi: {galenic.phases.join(', ')}</p>
+                        <div className="bg-white/10 p-4 rounded-xl font-mono text-sm mb-2">{galenic.ingredients.join(' + ')}</div>
+                        <p className="text-xs opacity-80">Richiedi la preparazione in Farmacia Centrale presentando questo report.</p>
+                    </div>
+                )}
+
+                <div className="flex flex-wrap justify-center gap-4">
+                    <button onClick={onRetake} className="px-6 py-3 bg-slate-100 text-slate-700 font-bold rounded-xl hover:bg-slate-200">Ripeti Test</button>
+                    <button onClick={downloadTxt} className="px-6 py-3 bg-emerald-500 text-white font-bold rounded-xl shadow-lg flex items-center gap-2 hover:bg-emerald-600"><DownloadIcon className="w-5 h-5"/> Scarica Report (.txt)</button>
+                    <button onClick={onBackToHome} className="px-6 py-3 bg-sky-600 text-white font-bold rounded-xl hover:bg-sky-700">Torna alla Home</button>
                 </div>
             </div>
         </div>
