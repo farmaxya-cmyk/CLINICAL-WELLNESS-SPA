@@ -1,5 +1,5 @@
 
-const CACHE_NAME = 'clinical-wellness-v8-audio-fix';
+const CACHE_NAME = 'clinical-wellness-v11-final-audio-bypass';
 const urlsToCache = [
   '/',
   '/index.html',
@@ -11,9 +11,8 @@ self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME)
       .then((cache) => {
-        // Tenta di cachare i file base, ma non bloccare l'installazione se fallisce (es. in dev)
         return cache.addAll(urlsToCache).catch(err => {
-            console.log('Cache install warning (non-critical):', err);
+            console.log('SW: Install partial cache (non-critical):', err);
         });
       })
   );
@@ -22,12 +21,20 @@ self.addEventListener('install', (event) => {
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
 
-  // 1. IGNORA FILE AUDIO E MEDIA (Evita problemi ORB/CORB con server esterni come catbox)
-  if (url.pathname.endsWith('.mp3') || url.pathname.endsWith('.wav') || url.pathname.endsWith('.ogg')) {
-    return; // Lascia che il browser gestisca la richiesta direttamente via rete
+  // 1. BYPASS TOTALE PER AUDIO E DOMINI ESTERNI MEDIA
+  // Il Service Worker NON deve intercettare gli MP3 perché i browser usano 'Range requests'
+  // che il SW standard rompe, causando il silenzio.
+  if (
+      url.pathname.endsWith('.mp3') || 
+      url.pathname.endsWith('.wav') || 
+      url.pathname.endsWith('.ogg') ||
+      url.hostname.includes('catbox.moe') ||
+      url.hostname.includes('archive.org')
+  ) {
+    return; // Passa direttamente al browser (Network Only)
   }
 
-  // 2. IGNORA RICHIESTE DI SVILUPPO VITE/REACT
+  // 2. BYPASS AMBIENTE SVILUPPO
   if (
     url.pathname.startsWith('/@') || 
     url.pathname.startsWith('/src') || 
@@ -38,11 +45,10 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // 3. STRATEGIA NETWORK-FIRST CON FALLBACK CACHE
+  // 3. STRATEGIA NETWORK-FIRST PER IL RESTO
   event.respondWith(
     fetch(event.request)
       .then((response) => {
-        // Se la risposta è valida e siamo sulla stessa origine, aggiorna la cache
         if (response && response.status === 200 && response.type === 'basic' && event.request.method === 'GET') {
             const responseToCache = response.clone();
             caches.open(CACHE_NAME).then((cache) => {
@@ -52,7 +58,6 @@ self.addEventListener('fetch', (event) => {
         return response;
       })
       .catch(() => {
-        // Se siamo offline o la rete fallisce, prova la cache
         return caches.match(event.request);
       })
   );
@@ -65,6 +70,7 @@ self.addEventListener('activate', (event) => {
       return Promise.all(
         cacheNames.map((cacheName) => {
           if (cacheWhitelist.indexOf(cacheName) === -1) {
+            console.log('SW: Eliminazione vecchia cache:', cacheName);
             return caches.delete(cacheName);
           }
         })
