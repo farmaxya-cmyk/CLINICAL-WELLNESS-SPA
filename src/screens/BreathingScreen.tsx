@@ -5,9 +5,10 @@ import { EyeIcon } from '../components/icons/EyeIcon';
 import { EyeOffIcon } from '../components/icons/EyeOffIcon';
 
 const SILENT_WAV = "data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA";
-const AUDIO_VER = "v14_" + Date.now();
+// Token di versione per forzare il refresh degli asset audio
+const AUDIO_TOKEN = "v15_" + Date.now();
 
-const BreathingScreen = () => {
+export const BreathingScreen = () => {
     const BREATHING_PATTERNS = {
       coherence: { name: '5-5 Coerenza Cardiaca', inhale: 5, hold: 0, exhale: 5 },
       vagotonia: { name: '4-6 Vagotonia', inhale: 4, hold: 0, exhale: 6 },
@@ -17,10 +18,10 @@ const BreathingScreen = () => {
 
     const MUSIC_TRACKS = [
         { label: '🔕 Silenzio (Solo Ding)', value: SILENT_WAV },
-        { label: '🎵 Relax (Healing)', value: `https://files.catbox.moe/zc81yy.mp3?v=${AUDIO_VER}` },
-        { label: '🧘 7 Chakra', value: `https://files.catbox.moe/j5j66e.mp3?v=${AUDIO_VER}` },
-        { label: '🧠 Mind', value: `https://files.catbox.moe/ad01.mp3?v=${AUDIO_VER}` },
-        { label: '🔮 Introspezione', value: `https://files.catbox.moe/w2234a.mp3?v=${AUDIO_VER}` },
+        { label: '🎵 Relax (Healing)', value: `https://files.catbox.moe/zc81yy.mp3?v=${AUDIO_TOKEN}` },
+        { label: '🧘 7 Chakra', value: `https://files.catbox.moe/j5j66e.mp3?v=${AUDIO_TOKEN}` },
+        { label: '🧠 Mind', value: `https://files.catbox.moe/ad01.mp3?v=${AUDIO_TOKEN}` },
+        { label: '🔮 Introspezione', value: `https://files.catbox.moe/w2234a.mp3?v=${AUDIO_TOKEN}` },
     ];
 
     const [duration, setDuration] = React.useState(300);
@@ -34,9 +35,9 @@ const BreathingScreen = () => {
     const [cycles, setCycles] = React.useState(0);
     const [mode, setMode] = React.useState<'open' | 'closed'>('closed');
     
-    // Ripristinati livelli di volume
-    const [musicVolume, setMusicVolume] = React.useState(0.4);
-    const [dingVolume, setDingVolume] = React.useState(0.6);
+    // LIVELLI DI VOLUME RIPRISTINATI
+    const [musicVolume, setMusicVolume] = React.useState(0.5);
+    const [dingVolume, setDingVolume] = React.useState(0.7);
 
     const audioCtxRef = React.useRef<AudioContext | null>(null);
     const masterGainRef = React.useRef<GainNode | null>(null);
@@ -53,9 +54,11 @@ const BreathingScreen = () => {
             osc.frequency.value = pitch;
             osc.connect(gain);
             gain.connect(destination);
+
             gain.gain.setValueAtTime(0, time);
-            gain.gain.linearRampToValueAtTime(1, time + 0.05);
+            gain.gain.linearRampToValueAtTime(1.0, time + 0.05);
             gain.gain.exponentialRampToValueAtTime(0.001, time + 2.0);
+
             osc.start(time);
             osc.stop(time + 2.5);
             scheduledNodesRef.current.push(osc);
@@ -67,10 +70,13 @@ const BreathingScreen = () => {
         let cursor = now + 0.1;
         const endTime = now + duration;
         const pattern = BREATHING_PATTERNS[patternKey];
+
         while (cursor < endTime) {
             scheduleDing(ctx, masterGainRef.current!, cursor, 432); // In
-            cursor += pattern.inhale + pattern.hold;
-            if (cursor < endTime) scheduleDing(ctx, masterGainRef.current!, cursor, 216); // Out
+            cursor += pattern.inhale + (pattern.hold || 0);
+            if (cursor < endTime) {
+                scheduleDing(ctx, masterGainRef.current!, cursor, 216); // Out
+            }
             cursor += pattern.exhale;
         }
     };
@@ -110,8 +116,8 @@ const BreathingScreen = () => {
             });
         }, 1000);
 
+        // 1. WEB AUDIO (DINGS)
         try {
-            // Inizializza Web Audio per i Ding
             if (!audioCtxRef.current) {
                 const AC = window.AudioContext || (window as any).webkitAudioContext;
                 audioCtxRef.current = new AC();
@@ -119,35 +125,46 @@ const BreathingScreen = () => {
                 masterGainRef.current.connect(audioCtxRef.current.destination);
             }
             if (audioCtxRef.current.state === 'suspended') await audioCtxRef.current.resume();
-            
-            // Applica volume Ding
-            if (masterGainRef.current) masterGainRef.current.gain.value = dingVolume;
+            masterGainRef.current!.gain.value = dingVolume;
             if (mode === 'closed') scheduleEntireSession(audioCtxRef.current);
+        } catch (err) { console.error(err); }
 
-            // Inizializza musica di sottofondo
+        // 2. BG MUSIC (MP3) - LOGICA DI CARICAMENTO FORZATA
+        try {
             if (bgAudioRef.current) {
-                bgAudioRef.current.volume = musicVolume;
+                // Fondamentale: cambiamo la src prima di chiamare load()
                 bgAudioRef.current.src = musicTrack;
+                bgAudioRef.current.volume = musicVolume;
+                
+                // Forza lo scaricamento pulito del buffer (risolve "Errore Rete")
                 bgAudioRef.current.load();
-                await bgAudioRef.current.play();
+                
+                // Piccola attesa per permettere al browser di agganciare la rete
+                setTimeout(async () => {
+                    try {
+                        if (bgAudioRef.current) await bgAudioRef.current.play();
+                    } catch (playErr) {
+                        console.error("Play failed after load:", playErr);
+                        setAudioError("Impossibile avviare la musica. Controlla la connessione.");
+                    }
+                }, 150);
             }
-        } catch (err) {
-            console.error(err);
-            setAudioError("Connessione audio instabile. Riprova.");
-        }
+        } catch (err) { console.error(err); }
     };
 
     const handleStop = () => {
         setIsActive(false);
         scheduledNodesRef.current.forEach(n => { try { n.stop(); n.disconnect(); } catch(e){} });
         scheduledNodesRef.current = [];
-        if (bgAudioRef.current) { bgAudioRef.current.pause(); bgAudioRef.current.currentTime = 0; }
+        if (bgAudioRef.current) { 
+            bgAudioRef.current.pause(); 
+            bgAudioRef.current.currentTime = 0; 
+        }
         clearTimeout(visualTimerRef.current);
         clearInterval(countdownTimerRef.current);
         setInstruction('Pronto'); setScale(0.6);
     };
 
-    // Aggiornamento volumi real-time
     React.useEffect(() => {
         if (bgAudioRef.current) bgAudioRef.current.volume = musicVolume;
         if (masterGainRef.current) masterGainRef.current.gain.value = dingVolume;
@@ -161,30 +178,32 @@ const BreathingScreen = () => {
                     <h1 className="text-3xl font-bold text-slate-800">Coerenza Cardiaca</h1>
                 </div>
 
-                <div className="space-y-4 mb-6">
+                <div className="space-y-4 mb-8">
                     <div className="flex bg-slate-100 p-1 rounded-xl">
                         <button onClick={() => setMode('open')} className={`flex-1 py-2 rounded-lg font-bold flex justify-center items-center gap-2 ${mode === 'open' ? 'bg-white shadow-sm text-sky-600' : 'text-slate-500'}`}><EyeIcon className="w-4 h-4"/>Visiva</button>
                         <button onClick={() => setMode('closed')} className={`flex-1 py-2 rounded-lg font-bold flex justify-center items-center gap-2 ${mode === 'closed' ? 'bg-white shadow-sm text-emerald-600' : 'text-slate-500'}`}><EyeOffIcon className="w-4 h-4"/>Sonora</button>
                     </div>
 
                     <div className="grid grid-cols-1 gap-3">
-                        <select value={patternKey} onChange={e => setPatternKey(e.target.value)} disabled={isActive} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl font-semibold">
+                        <select value={patternKey} onChange={e => setPatternKey(e.target.value)} disabled={isActive} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl font-semibold outline-none focus:ring-2 focus:ring-sky-500">
                             {Object.entries(BREATHING_PATTERNS).map(([k,v]) => <option key={k} value={k}>{v.name}</option>)}
                         </select>
-                        <select value={musicTrack} onChange={e => setMusicTrack(e.target.value)} disabled={isActive} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl font-semibold">
+                        <select value={musicTrack} onChange={e => setMusicTrack(e.target.value)} disabled={isActive} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl font-semibold outline-none focus:ring-2 focus:ring-sky-500">
                             {MUSIC_TRACKS.map(t => <option key={t.label} value={t.value}>{t.label}</option>)}
                         </select>
                     </div>
 
-                    {/* Ripristinati Sliders Volume */}
-                    <div className="bg-slate-50 p-4 rounded-xl space-y-3">
+                    {/* CONTROLLI VOLUME RIPRISTINATI */}
+                    <div className="bg-slate-50 p-4 rounded-2xl space-y-4 border border-slate-100">
                         <div className="flex items-center gap-4">
-                            <span className="text-xs font-bold text-slate-400 w-16 text-left">Musica</span>
-                            <input type="range" min="0" max="1" step="0.05" value={musicVolume} onChange={e => setMusicVolume(parseFloat(e.target.value))} className="flex-grow h-1.5 bg-slate-200 rounded-lg accent-sky-500 cursor-pointer" />
+                            <span className="text-[10px] font-black text-slate-400 w-16 uppercase text-left">Musica</span>
+                            <input type="range" min="0" max="1" step="0.01" value={musicVolume} onChange={e => setMusicVolume(parseFloat(e.target.value))} className="flex-grow h-1.5 bg-slate-200 rounded-lg accent-sky-500 cursor-pointer" />
+                            <span className="text-[10px] font-bold text-slate-500 w-8">{Math.round(musicVolume * 100)}%</span>
                         </div>
                         <div className="flex items-center gap-4">
-                            <span className="text-xs font-bold text-slate-400 w-16 text-left">Ding</span>
-                            <input type="range" min="0" max="1" step="0.05" value={dingVolume} onChange={e => setDingVolume(parseFloat(e.target.value))} className="flex-grow h-1.5 bg-slate-200 rounded-lg accent-emerald-500 cursor-pointer" />
+                            <span className="text-[10px] font-black text-slate-400 w-16 uppercase text-left">Ding</span>
+                            <input type="range" min="0" max="1" step="0.01" value={dingVolume} onChange={e => setDingVolume(parseFloat(e.target.value))} className="flex-grow h-1.5 bg-slate-200 rounded-lg accent-emerald-500 cursor-pointer" />
+                            <span className="text-[10px] font-bold text-slate-500 w-8">{Math.round(dingVolume * 100)}%</span>
                         </div>
                     </div>
                 </div>
@@ -194,19 +213,20 @@ const BreathingScreen = () => {
                 <div className="relative w-64 h-64 mx-auto mb-8 flex items-center justify-center">
                     <div className={`absolute inset-0 bg-sky-200 rounded-full blur-2xl opacity-20 transition-transform duration-[4000ms] ${isActive ? 'scale-125' : 'scale-100'}`}></div>
                     <div className="w-full h-full bg-gradient-to-br from-sky-400 to-blue-600 rounded-full shadow-2xl transition-all ease-in-out" style={{ transform: `scale(${scale})`, transitionDuration: isActive ? (instruction === 'Inspira' ? `${BREATHING_PATTERNS[patternKey].inhale}s` : `${BREATHING_PATTERNS[patternKey].exhale}s`) : '0.5s' }}></div>
-                    <div className="absolute font-black text-3xl text-slate-800 uppercase tracking-tighter drop-shadow-sm">{instruction}</div>
+                    <div className="absolute font-black text-3xl text-slate-800 uppercase tracking-tighter drop-shadow-sm pointer-events-none">{instruction}</div>
                 </div>
 
-                <div className="flex justify-around mb-8">
-                    <div><p className="text-[10px] font-bold text-slate-400 uppercase">Cicli</p><p className="text-2xl font-bold text-slate-700">{cycles}</p></div>
-                    <div><p className="text-[10px] font-bold text-slate-400 uppercase">Tempo</p><p className="text-2xl font-mono font-bold text-slate-700">{Math.floor(timeLeft/60)}:{String(timeLeft%60).padStart(2,'0')}</p></div>
+                <div className="flex justify-around mb-8 bg-slate-50 p-4 rounded-2xl border border-slate-100">
+                    <div><p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Cicli</p><p className="text-2xl font-bold text-slate-700">{cycles}</p></div>
+                    <div><p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Tempo</p><p className="text-2xl font-mono font-bold text-slate-700">{Math.floor(timeLeft/60)}:{String(timeLeft%60).padStart(2,'0')}</p></div>
                 </div>
 
                 <button onClick={isActive ? handleStop : handleStart} className={`w-full py-4 rounded-2xl text-white font-bold text-lg shadow-lg transform active:scale-95 transition-all ${isActive ? 'bg-slate-700' : 'bg-gradient-to-r from-sky-500 to-blue-600 hover:from-sky-600 hover:to-blue-700'}`}>
                     {isActive ? "Termina Sessione" : "Inizia Respirazione"}
                 </button>
             </div>
-            <audio ref={bgAudioRef} loop playsInline preload="none" style={{ display: 'none' }} />
+            {/* Elemento audio invisibile ma configurato correttamente */}
+            <audio ref={bgAudioRef} loop playsInline preload="auto" crossOrigin="anonymous" style={{ display: 'none' }} />
         </div>
     );
 };

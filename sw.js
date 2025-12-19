@@ -1,5 +1,5 @@
 
-const CACHE_NAME = 'clinical-wellness-v14-final-fix';
+const CACHE_NAME = 'clinical-wellness-v15-media-bypass';
 const urlsToCache = [
   '/',
   '/index.html',
@@ -16,9 +16,8 @@ self.addEventListener('install', (event) => {
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
 
-  // BYPASS TOTALE PER AUDIO E STREAMING
-  // Se la richiesta è per un file audio o un dominio media, non chiamiamo respondWith.
-  // Questo risolve l'errore "Range Request" dei browser mobili.
+  // BYPASS TOTALE E IMMEDIATO PER MP3 E MEDIA ESTERNI
+  // Se l'URL contiene estensioni audio o proviene da domini media, ESCE dal Service Worker
   if (
     event.request.destination === 'audio' ||
     url.pathname.toLowerCase().endsWith('.mp3') ||
@@ -26,9 +25,10 @@ self.addEventListener('fetch', (event) => {
     url.hostname.includes('catbox.moe') ||
     url.hostname.includes('archive.org')
   ) {
-    return; // Passa al browser nativamente
+    return; // Passa alla rete nativa
   }
 
+  // Bypass sviluppo
   if (url.port === '5173' || url.pathname.startsWith('/@') || url.pathname.startsWith('/node_modules')) {
     return;
   }
@@ -36,7 +36,7 @@ self.addEventListener('fetch', (event) => {
   event.respondWith(
     fetch(event.request)
       .then((response) => {
-        if (response.status === 200 && response.type === 'basic') {
+        if (response && response.status === 200 && response.type === 'basic') {
           const responseToCache = response.clone();
           caches.open(CACHE_NAME).then((cache) => cache.put(event.request, responseToCache));
         }
