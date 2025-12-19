@@ -1,7 +1,7 @@
-const CACHE_NAME = 'clinical-wellness-v19';
+const CACHE_NAME = 'clinical-wellness-v20';
 
-// FIX: GitHub Pages non supporta '/' in cache.addAll.
-// Uso solo file realmente presenti nella root.
+// FIX: GitHub Pages usa una sottocartella /CLINICAL-WELLNESS-SPA/
+// quindi i file vanno referenziati con percorso relativo
 const urlsToCache = [
   './index.html',
   './manifest.json'
@@ -21,18 +21,19 @@ self.addEventListener('install', (event) => {
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
 
-  // BYPASS CRITICO: Il Service Worker NON deve toccare l'audio
+  // BYPASS AUDIO: il SW NON deve toccare gli MP3
   if (
-    event.request.destination === 'audio' || 
-    url.hostname.includes('catbox.moe') || 
+    event.request.destination === 'audio' ||
+    url.pathname.includes('/audio/') ||
     url.pathname.endsWith('.mp3')
   ) {
-    return; // Esci immediatamente, usa la rete nativa del browser
+    return; // lascia la rete gestire l'audio
   }
 
+  // BYPASS richieste dev
   if (
-    url.port === '5173' || 
-    url.pathname.startsWith('/@') || 
+    url.port === '5173' ||
+    url.pathname.startsWith('/@') ||
     url.pathname.startsWith('/node_modules')
   ) {
     return;
