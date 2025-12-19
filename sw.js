@@ -1,34 +1,25 @@
 
-const CACHE_NAME = 'clinical-wellness-v15-media-bypass';
-const urlsToCache = [
-  '/',
-  '/index.html',
-  '/manifest.json'
-];
+const CACHE_NAME = 'clinical-wellness-v18';
+const urlsToCache = ['/', '/index.html', '/manifest.json'];
 
 self.addEventListener('install', (event) => {
   self.skipWaiting();
-  event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(urlsToCache))
-  );
+  event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(urlsToCache)));
 });
 
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
 
-  // BYPASS TOTALE E IMMEDIATO PER MP3 E MEDIA ESTERNI
-  // Se l'URL contiene estensioni audio o proviene da domini media, ESCE dal Service Worker
+  // BYPASS AGGRESSIVO: Esce dal SW per audio, media esterni e URL con versioning
   if (
     event.request.destination === 'audio' ||
     url.pathname.toLowerCase().endsWith('.mp3') ||
-    url.pathname.toLowerCase().endsWith('.wav') ||
     url.hostname.includes('catbox.moe') ||
-    url.hostname.includes('archive.org')
+    url.search.includes('v=') // Bypass per le tracce con AUDIO_VER
   ) {
-    return; // Passa alla rete nativa
+    return; 
   }
 
-  // Bypass sviluppo
   if (url.port === '5173' || url.pathname.startsWith('/@') || url.pathname.startsWith('/node_modules')) {
     return;
   }

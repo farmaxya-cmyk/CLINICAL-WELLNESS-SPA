@@ -19,12 +19,11 @@ const ResultsScreen = ({ assessment, score, answers, onRetake, onBackToHome }) =
 
             assessment.questions.forEach((q, i) => {
                 const val = answers[i] || 0;
-                const pList = q.phase ? q.phase.split('/').map(s => s.trim()) : [];
+                const pList = q.phase ? q.phase.split(' / ').map(s => s.trim()) : [];
                 pList.forEach(p => { 
-                    const cleanP = p.replace(' / ', '/').split('/')[0].trim(); // Normalizzazione
-                    if(phases[cleanP] !== undefined) { 
-                        phases[cleanP] += val; 
-                        counts[cleanP] += 4; 
+                    if(phases[p] !== undefined) { 
+                        phases[p] += val; 
+                        counts[p] += 4; 
                     } 
                 });
             });
@@ -38,44 +37,49 @@ const ResultsScreen = ({ assessment, score, answers, onRetake, onBackToHome }) =
             const critical = [...results].sort((a,b) => a.percentage - b.percentage).filter(p => p.percentage < 75).slice(0,2);
             if (critical.length > 0) {
                 const remedies = new Set();
-                critical.forEach(c => assessment.phaseRemedies?.[c.name]?.remedies?.forEach(r => remedies.add(r)));
+                critical.forEach(c => assessment.phaseRemedies?.[c.name]?.remedies?.forEach((r: any) => remedies.add(r)));
                 setGalenic({ ingredients: Array.from(remedies), phases: critical.map(c => c.name) });
             }
         }
     }, [isSleep, answers, assessment]);
 
     const downloadTxt = () => {
+        const cleanSummary = result.summary.replace(/<[^>]*>?/gm, '').replace(/\n\s*\n/g, '\n').trim();
+        
         let txt = `=================================================\n`;
-        txt += `   CLINICAL WELLNESS SPA - REPORT DI ANALISI\n`;
+        txt += `   CLINICAL WELLNESS SPA - REPORT VALUTAZIONE\n`;
         txt += `=================================================\n\n`;
-        txt += `Test: ${assessment.title}\n`;
-        txt += `Data: ${new Date().toLocaleDateString('it-IT')}\n`;
-        txt += `Punteggio: ${score}/80\n\n`;
-        txt += `RISULTATO: ${result.title}\n`;
+        txt += `TEST: ${assessment.title.toUpperCase()}\n`;
+        txt += `DATA: ${new Date().toLocaleDateString('it-IT')} ${new Date().toLocaleTimeString('it-IT')}\n`;
+        txt += `PUNTEGGIO TOTALE: ${score} / 80\n\n`;
+        txt += `VALUTAZIONE: ${result.title}\n`;
         txt += `-------------------------------------------------\n`;
-        txt += `${result.summary.replace(/<[^>]*>?/gm, '')}\n\n`;
+        txt += `${cleanSummary}\n\n`;
         
         if (phaseData) {
-            txt += `DETTAGLIO ARCHITETTURA DEL SONNO:\n`;
-            phaseData.forEach(p => txt += `- ${p.name}: ${p.percentage}% (${p.status})\n`);
+            txt += `ANALISI ARCHITETTURA DEL SONNO:\n`;
+            phaseData.forEach(p => {
+                txt += `- ${p.name.padEnd(10)}: ${p.percentage}% [${p.status}]\n`;
+            });
+            
             if (galenic) {
                 txt += `\n-------------------------------------------------\n`;
                 txt += `   FORMULA GALENICA PERSONALIZZATA\n`;
                 txt += `-------------------------------------------------\n`;
-                txt += `Target: ${galenic.phases.join(', ')}\n`;
-                txt += `Composizione: ${galenic.ingredients.join(' + ')}\n`;
-                txt += `Posologia: 1-2 capsule la sera prima di coricarsi.\n\n`;
-                txt += `(Presenta questo report in Farmacia Centrale per la preparazione)\n`;
+                txt += `OBIETTIVO: Sostegno per ${galenic.phases.join(' e ')}\n`;
+                txt += `COMPOSIZIONE: ${galenic.ingredients.join(' + ')}\n`;
+                txt += `INDICAZIONI: 1-2 capsule la sera 30 minuti prima di coricarsi.\n\n`;
+                txt += `Presenta questo report in Farmacia Centrale Montesilvano\nper la preparazione nel laboratorio galenico.\n`;
             }
         }
 
         txt += `\n=================================================\n`;
-        txt += `Disclaimer: Autovalutazione AI. Non sostituisce il parere medico.`;
+        txt += `Disclaimer: Il presente report è un'autovalutazione guidata\ne non sostituisce in alcun modo la diagnosi medica.`;
         
         const blob = new Blob(["\uFEFF" + txt], { type: 'text/plain;charset=utf-8' });
         const link = document.createElement('a');
         link.href = URL.createObjectURL(blob);
-        link.download = `Wellness_Report_${assessment.id}_${new Date().getTime()}.txt`;
+        link.download = `Report_${assessment.id}_${new Date().getTime()}.txt`;
         link.click();
     };
 

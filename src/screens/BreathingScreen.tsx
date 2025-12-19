@@ -5,8 +5,7 @@ import { EyeIcon } from '../components/icons/EyeIcon';
 import { EyeOffIcon } from '../components/icons/EyeOffIcon';
 
 const SILENT_WAV = "data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA";
-// Token di versione per forzare il refresh degli asset audio
-const AUDIO_TOKEN = "v15_" + Date.now();
+const AUDIO_VER = "v18_" + Date.now();
 
 export const BreathingScreen = () => {
     const BREATHING_PATTERNS = {
@@ -18,10 +17,10 @@ export const BreathingScreen = () => {
 
     const MUSIC_TRACKS = [
         { label: '🔕 Silenzio (Solo Ding)', value: SILENT_WAV },
-        { label: '🎵 Relax (Healing)', value: `https://files.catbox.moe/zc81yy.mp3?v=${AUDIO_TOKEN}` },
-        { label: '🧘 7 Chakra', value: `https://files.catbox.moe/j5j66e.mp3?v=${AUDIO_TOKEN}` },
-        { label: '🧠 Mind', value: `https://files.catbox.moe/ad01.mp3?v=${AUDIO_TOKEN}` },
-        { label: '🔮 Introspezione', value: `https://files.catbox.moe/w2234a.mp3?v=${AUDIO_TOKEN}` },
+        { label: '🎵 Relax (Healing)', value: `https://files.catbox.moe/zc81yy.mp3?v=${AUDIO_VER}` },
+        { label: '🧘 7 Chakra', value: `https://files.catbox.moe/j5j66e.mp3?v=${AUDIO_VER}` },
+        { label: '🧠 Mind', value: `https://files.catbox.moe/ad01.mp3?v=${AUDIO_VER}` },
+        { label: '🔮 Introspezione', value: `https://files.catbox.moe/w2234a.mp3?v=${AUDIO_VER}` },
     ];
 
     const [duration, setDuration] = React.useState(300);
@@ -34,10 +33,8 @@ export const BreathingScreen = () => {
     const [timeLeft, setTimeLeft] = React.useState(300);
     const [cycles, setCycles] = React.useState(0);
     const [mode, setMode] = React.useState<'open' | 'closed'>('closed');
-    
-    // LIVELLI DI VOLUME RIPRISTINATI
     const [musicVolume, setMusicVolume] = React.useState(0.5);
-    const [dingVolume, setDingVolume] = React.useState(0.7);
+    const [dingVolume, setDingVolume] = React.useState(0.6);
 
     const audioCtxRef = React.useRef<AudioContext | null>(null);
     const masterGainRef = React.useRef<GainNode | null>(null);
@@ -54,11 +51,9 @@ export const BreathingScreen = () => {
             osc.frequency.value = pitch;
             osc.connect(gain);
             gain.connect(destination);
-
             gain.gain.setValueAtTime(0, time);
-            gain.gain.linearRampToValueAtTime(1.0, time + 0.05);
+            gain.gain.linearRampToValueAtTime(1, time + 0.05);
             gain.gain.exponentialRampToValueAtTime(0.001, time + 2.0);
-
             osc.start(time);
             osc.stop(time + 2.5);
             scheduledNodesRef.current.push(osc);
@@ -70,18 +65,41 @@ export const BreathingScreen = () => {
         let cursor = now + 0.1;
         const endTime = now + duration;
         const pattern = BREATHING_PATTERNS[patternKey];
-
         while (cursor < endTime) {
             scheduleDing(ctx, masterGainRef.current!, cursor, 432); // In
             cursor += pattern.inhale + (pattern.hold || 0);
-            if (cursor < endTime) {
-                scheduleDing(ctx, masterGainRef.current!, cursor, 216); // Out
-            }
+            if (cursor < endTime) scheduleDing(ctx, masterGainRef.current!, cursor, 216); // Out
             cursor += pattern.exhale;
         }
     };
 
-    const startVisuals = () => {
+    const handleStart = () => {
+        setAudioError('');
+        setIsActive(true);
+        setTimeLeft(duration);
+        setCycles(0);
+
+        // 1. BG MUSIC (MP3) - AVVIO SINCRONO ASSOLUTO (Risolve Errori Rete)
+        const audio = bgAudioRef.current;
+        if (audio) {
+            audio.volume = musicVolume;
+            audio.src = musicTrack;
+            audio.load();
+            audio.play().catch(() => setAudioError("Premi di nuovo Start per autorizzare l'audio."));
+        }
+
+        // 2. WEB AUDIO (DINGS)
+        if (!audioCtxRef.current) {
+            const AC = window.AudioContext || (window as any).webkitAudioContext;
+            audioCtxRef.current = new AC();
+            masterGainRef.current = audioCtxRef.current.createGain();
+            masterGainRef.current.connect(audioCtxRef.current.destination);
+        }
+        
+        if (audioCtxRef.current.state === 'suspended') audioCtxRef.current.resume();
+        if (masterGainRef.current) masterGainRef.current.gain.value = dingVolume;
+        if (mode === 'closed' && audioCtxRef.current) scheduleEntireSession(audioCtxRef.current);
+
         const pattern = BREATHING_PATTERNS[patternKey];
         const loop = () => {
             if (!isActive) return;
@@ -100,14 +118,6 @@ export const BreathingScreen = () => {
             }, pattern.inhale * 1000);
         };
         loop();
-    };
-
-    const handleStart = async () => {
-        setAudioError('');
-        setIsActive(true);
-        setTimeLeft(duration);
-        setCycles(0);
-        startVisuals();
 
         countdownTimerRef.current = setInterval(() => {
             setTimeLeft(prev => {
@@ -115,51 +125,13 @@ export const BreathingScreen = () => {
                 return prev - 1;
             });
         }, 1000);
-
-        // 1. WEB AUDIO (DINGS)
-        try {
-            if (!audioCtxRef.current) {
-                const AC = window.AudioContext || (window as any).webkitAudioContext;
-                audioCtxRef.current = new AC();
-                masterGainRef.current = audioCtxRef.current.createGain();
-                masterGainRef.current.connect(audioCtxRef.current.destination);
-            }
-            if (audioCtxRef.current.state === 'suspended') await audioCtxRef.current.resume();
-            masterGainRef.current!.gain.value = dingVolume;
-            if (mode === 'closed') scheduleEntireSession(audioCtxRef.current);
-        } catch (err) { console.error(err); }
-
-        // 2. BG MUSIC (MP3) - LOGICA DI CARICAMENTO FORZATA
-        try {
-            if (bgAudioRef.current) {
-                // Fondamentale: cambiamo la src prima di chiamare load()
-                bgAudioRef.current.src = musicTrack;
-                bgAudioRef.current.volume = musicVolume;
-                
-                // Forza lo scaricamento pulito del buffer (risolve "Errore Rete")
-                bgAudioRef.current.load();
-                
-                // Piccola attesa per permettere al browser di agganciare la rete
-                setTimeout(async () => {
-                    try {
-                        if (bgAudioRef.current) await bgAudioRef.current.play();
-                    } catch (playErr) {
-                        console.error("Play failed after load:", playErr);
-                        setAudioError("Impossibile avviare la musica. Controlla la connessione.");
-                    }
-                }, 150);
-            }
-        } catch (err) { console.error(err); }
     };
 
     const handleStop = () => {
         setIsActive(false);
         scheduledNodesRef.current.forEach(n => { try { n.stop(); n.disconnect(); } catch(e){} });
         scheduledNodesRef.current = [];
-        if (bgAudioRef.current) { 
-            bgAudioRef.current.pause(); 
-            bgAudioRef.current.currentTime = 0; 
-        }
+        if (bgAudioRef.current) { bgAudioRef.current.pause(); bgAudioRef.current.currentTime = 0; }
         clearTimeout(visualTimerRef.current);
         clearInterval(countdownTimerRef.current);
         setInstruction('Pronto'); setScale(0.6);
@@ -178,7 +150,7 @@ export const BreathingScreen = () => {
                     <h1 className="text-3xl font-bold text-slate-800">Coerenza Cardiaca</h1>
                 </div>
 
-                <div className="space-y-4 mb-8">
+                <div className="space-y-4 mb-6">
                     <div className="flex bg-slate-100 p-1 rounded-xl">
                         <button onClick={() => setMode('open')} className={`flex-1 py-2 rounded-lg font-bold flex justify-center items-center gap-2 ${mode === 'open' ? 'bg-white shadow-sm text-sky-600' : 'text-slate-500'}`}><EyeIcon className="w-4 h-4"/>Visiva</button>
                         <button onClick={() => setMode('closed')} className={`flex-1 py-2 rounded-lg font-bold flex justify-center items-center gap-2 ${mode === 'closed' ? 'bg-white shadow-sm text-emerald-600' : 'text-slate-500'}`}><EyeOffIcon className="w-4 h-4"/>Sonora</button>
@@ -193,16 +165,15 @@ export const BreathingScreen = () => {
                         </select>
                     </div>
 
-                    {/* CONTROLLI VOLUME RIPRISTINATI */}
-                    <div className="bg-slate-50 p-4 rounded-2xl space-y-4 border border-slate-100">
+                    <div className="bg-slate-50 p-4 rounded-xl space-y-3 border border-slate-100">
                         <div className="flex items-center gap-4">
                             <span className="text-[10px] font-black text-slate-400 w-16 uppercase text-left">Musica</span>
-                            <input type="range" min="0" max="1" step="0.01" value={musicVolume} onChange={e => setMusicVolume(parseFloat(e.target.value))} className="flex-grow h-1.5 bg-slate-200 rounded-lg accent-sky-500 cursor-pointer" />
+                            <input type="range" min="0" max="1" step="0.01" value={musicVolume} onChange={e => setMusicVolume(parseFloat(e.target.value))} className="flex-grow h-1.5 bg-slate-200 rounded-lg accent-sky-500" />
                             <span className="text-[10px] font-bold text-slate-500 w-8">{Math.round(musicVolume * 100)}%</span>
                         </div>
                         <div className="flex items-center gap-4">
                             <span className="text-[10px] font-black text-slate-400 w-16 uppercase text-left">Ding</span>
-                            <input type="range" min="0" max="1" step="0.01" value={dingVolume} onChange={e => setDingVolume(parseFloat(e.target.value))} className="flex-grow h-1.5 bg-slate-200 rounded-lg accent-emerald-500 cursor-pointer" />
+                            <input type="range" min="0" max="1" step="0.01" value={dingVolume} onChange={e => setDingVolume(parseFloat(e.target.value))} className="flex-grow h-1.5 bg-slate-200 rounded-lg accent-emerald-500" />
                             <span className="text-[10px] font-bold text-slate-500 w-8">{Math.round(dingVolume * 100)}%</span>
                         </div>
                     </div>
@@ -225,7 +196,6 @@ export const BreathingScreen = () => {
                     {isActive ? "Termina Sessione" : "Inizia Respirazione"}
                 </button>
             </div>
-            {/* Elemento audio invisibile ma configurato correttamente */}
             <audio ref={bgAudioRef} loop playsInline preload="auto" crossOrigin="anonymous" style={{ display: 'none' }} />
         </div>
     );
