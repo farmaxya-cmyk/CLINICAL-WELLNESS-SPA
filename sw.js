@@ -1,5 +1,5 @@
 
-const CACHE_NAME = 'clinical-wellness-v18';
+const CACHE_NAME = 'clinical-wellness-v19';
 const urlsToCache = ['/', '/index.html', '/manifest.json'];
 
 self.addEventListener('install', (event) => {
@@ -10,14 +10,13 @@ self.addEventListener('install', (event) => {
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
 
-  // BYPASS AGGRESSIVO: Esce dal SW per audio, media esterni e URL con versioning
+  // BYPASS CRITICO: Il Service Worker NON deve toccare l'audio
   if (
-    event.request.destination === 'audio' ||
-    url.pathname.toLowerCase().endsWith('.mp3') ||
-    url.hostname.includes('catbox.moe') ||
-    url.search.includes('v=') // Bypass per le tracce con AUDIO_VER
+    event.request.destination === 'audio' || 
+    url.hostname.includes('catbox.moe') || 
+    url.pathname.endsWith('.mp3')
   ) {
-    return; 
+    return; // Esci immediatamente, usa la rete nativa del browser
   }
 
   if (url.port === '5173' || url.pathname.startsWith('/@') || url.pathname.startsWith('/node_modules')) {

@@ -5,7 +5,6 @@ import { EyeIcon } from '../components/icons/EyeIcon';
 import { EyeOffIcon } from '../components/icons/EyeOffIcon';
 
 const SILENT_WAV = "data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA";
-const AUDIO_VER = "v18_" + Date.now();
 
 export const BreathingScreen = () => {
     const BREATHING_PATTERNS = {
@@ -16,11 +15,11 @@ export const BreathingScreen = () => {
     };
 
     const MUSIC_TRACKS = [
-        { label: '🔕 Silenzio (Solo Ding)', value: SILENT_WAV },
-        { label: '🎵 Relax (Healing)', value: `https://files.catbox.moe/zc81yy.mp3?v=${AUDIO_VER}` },
-        { label: '🧘 7 Chakra', value: `https://files.catbox.moe/j5j66e.mp3?v=${AUDIO_VER}` },
-        { label: '🧠 Mind', value: `https://files.catbox.moe/ad01.mp3?v=${AUDIO_VER}` },
-        { label: '🔮 Introspezione', value: `https://files.catbox.moe/w2234a.mp3?v=${AUDIO_VER}` },
+        { label: '🔕 Solo Ding (Silenzio)', value: SILENT_WAV },
+        { label: '🎵 Relax (Healing)', value: 'https://files.catbox.moe/zc81yy.mp3' },
+        { label: '🧘 7 Chakra', value: 'https://files.catbox.moe/j5j66e.mp3' },
+        { label: '🧠 Mind', value: 'https://files.catbox.moe/ad01.mp3' },
+        { label: '🔮 Introspezione', value: 'https://files.catbox.moe/w2234a.mp3' },
     ];
 
     const [duration, setDuration] = React.useState(300);
@@ -34,7 +33,7 @@ export const BreathingScreen = () => {
     const [cycles, setCycles] = React.useState(0);
     const [mode, setMode] = React.useState<'open' | 'closed'>('closed');
     const [musicVolume, setMusicVolume] = React.useState(0.5);
-    const [dingVolume, setDingVolume] = React.useState(0.6);
+    const [dingVolume, setDingVolume] = React.useState(0.7);
 
     const audioCtxRef = React.useRef<AudioContext | null>(null);
     const masterGainRef = React.useRef<GainNode | null>(null);
@@ -42,6 +41,14 @@ export const BreathingScreen = () => {
     const scheduledNodesRef = React.useRef<AudioScheduledSourceNode[]>([]);
     const visualTimerRef = React.useRef<any>(null);
     const countdownTimerRef = React.useRef<any>(null);
+
+    // Caricamento preventivo quando cambia la traccia
+    React.useEffect(() => {
+        if (bgAudioRef.current) {
+            bgAudioRef.current.src = musicTrack;
+            bgAudioRef.current.load();
+        }
+    }, [musicTrack]);
 
     const scheduleDing = (ctx: AudioContext, destination: AudioNode, time: number, pitch: number) => {
         try {
@@ -79,26 +86,25 @@ export const BreathingScreen = () => {
         setTimeLeft(duration);
         setCycles(0);
 
-        // 1. BG MUSIC (MP3) - AVVIO SINCRONO ASSOLUTO (Risolve Errori Rete)
-        const audio = bgAudioRef.current;
-        if (audio) {
-            audio.volume = musicVolume;
-            audio.src = musicTrack;
-            audio.load();
-            audio.play().catch(() => setAudioError("Premi di nuovo Start per autorizzare l'audio."));
+        // 1. BG MUSIC - ESECUZIONE IMMEDIATA (La src è già caricata dall'useEffect)
+        if (bgAudioRef.current) {
+            bgAudioRef.current.volume = musicVolume;
+            bgAudioRef.current.play().catch(() => {
+                setAudioError("Permesso audio negato dal browser. Clicca di nuovo.");
+                setIsActive(false);
+            });
         }
 
-        // 2. WEB AUDIO (DINGS)
+        // 2. WEB AUDIO DINGS
         if (!audioCtxRef.current) {
             const AC = window.AudioContext || (window as any).webkitAudioContext;
             audioCtxRef.current = new AC();
             masterGainRef.current = audioCtxRef.current.createGain();
             masterGainRef.current.connect(audioCtxRef.current.destination);
         }
-        
         if (audioCtxRef.current.state === 'suspended') audioCtxRef.current.resume();
-        if (masterGainRef.current) masterGainRef.current.gain.value = dingVolume;
-        if (mode === 'closed' && audioCtxRef.current) scheduleEntireSession(audioCtxRef.current);
+        masterGainRef.current!.gain.value = dingVolume;
+        if (mode === 'closed') scheduleEntireSession(audioCtxRef.current);
 
         const pattern = BREATHING_PATTERNS[patternKey];
         const loop = () => {
@@ -156,11 +162,12 @@ export const BreathingScreen = () => {
                         <button onClick={() => setMode('closed')} className={`flex-1 py-2 rounded-lg font-bold flex justify-center items-center gap-2 ${mode === 'closed' ? 'bg-white shadow-sm text-emerald-600' : 'text-slate-500'}`}><EyeOffIcon className="w-4 h-4"/>Sonora</button>
                     </div>
 
-                    <div className="grid grid-cols-1 gap-3">
-                        <select value={patternKey} onChange={e => setPatternKey(e.target.value)} disabled={isActive} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl font-semibold outline-none focus:ring-2 focus:ring-sky-500">
+                    <div className="grid grid-cols-1 gap-3 text-left">
+                        <label className="text-[10px] font-black text-slate-400 uppercase ml-2">Protocollo e Musica</label>
+                        <select value={patternKey} onChange={e => setPatternKey(e.target.value)} disabled={isActive} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl font-semibold">
                             {Object.entries(BREATHING_PATTERNS).map(([k,v]) => <option key={k} value={k}>{v.name}</option>)}
                         </select>
-                        <select value={musicTrack} onChange={e => setMusicTrack(e.target.value)} disabled={isActive} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl font-semibold outline-none focus:ring-2 focus:ring-sky-500">
+                        <select value={musicTrack} onChange={e => setMusicTrack(e.target.value)} disabled={isActive} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl font-semibold">
                             {MUSIC_TRACKS.map(t => <option key={t.label} value={t.value}>{t.label}</option>)}
                         </select>
                     </div>
@@ -168,12 +175,12 @@ export const BreathingScreen = () => {
                     <div className="bg-slate-50 p-4 rounded-xl space-y-3 border border-slate-100">
                         <div className="flex items-center gap-4">
                             <span className="text-[10px] font-black text-slate-400 w-16 uppercase text-left">Musica</span>
-                            <input type="range" min="0" max="1" step="0.01" value={musicVolume} onChange={e => setMusicVolume(parseFloat(e.target.value))} className="flex-grow h-1.5 bg-slate-200 rounded-lg accent-sky-500" />
+                            <input type="range" min="0" max="1" step="0.01" value={musicVolume} onChange={e => setMusicVolume(parseFloat(e.target.value))} className="flex-grow h-1.5 bg-slate-200 rounded-lg accent-sky-500 cursor-pointer" />
                             <span className="text-[10px] font-bold text-slate-500 w-8">{Math.round(musicVolume * 100)}%</span>
                         </div>
                         <div className="flex items-center gap-4">
                             <span className="text-[10px] font-black text-slate-400 w-16 uppercase text-left">Ding</span>
-                            <input type="range" min="0" max="1" step="0.01" value={dingVolume} onChange={e => setDingVolume(parseFloat(e.target.value))} className="flex-grow h-1.5 bg-slate-200 rounded-lg accent-emerald-500" />
+                            <input type="range" min="0" max="1" step="0.01" value={dingVolume} onChange={e => setDingVolume(parseFloat(e.target.value))} className="flex-grow h-1.5 bg-slate-200 rounded-lg accent-emerald-500 cursor-pointer" />
                             <span className="text-[10px] font-bold text-slate-500 w-8">{Math.round(dingVolume * 100)}%</span>
                         </div>
                     </div>

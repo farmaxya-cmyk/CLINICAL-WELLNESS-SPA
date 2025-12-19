@@ -30,7 +30,7 @@ const ResultsScreen = ({ assessment, score, answers, onRetake, onBackToHome }) =
 
             const results = Object.keys(phases).map(k => {
                 const perc = counts[k] > 0 ? Math.round((phases[k]/counts[k])*100) : 100;
-                return { name: k, percentage: perc, status: perc < 60 ? 'Insufficienza rilevata' : perc < 75 ? 'Lieve' : 'Adeguato' };
+                return { name: k, percentage: perc, status: perc < 60 ? 'Critico' : perc < 75 ? 'Lieve' : 'Ottimale' };
             });
             setPhaseData(results);
 
@@ -44,42 +44,40 @@ const ResultsScreen = ({ assessment, score, answers, onRetake, onBackToHome }) =
     }, [isSleep, answers, assessment]);
 
     const downloadTxt = () => {
-        const cleanSummary = result.summary.replace(/<[^>]*>?/gm, '').replace(/\n\s*\n/g, '\n').trim();
-        
+        const cleanSummary = result.summary.replace(/<[^>]*>?/gm, '').replace(/\s+/g, ' ').trim();
         let txt = `=================================================\n`;
-        txt += `   CLINICAL WELLNESS SPA - REPORT VALUTAZIONE\n`;
+        txt += `   CLINICAL WELLNESS SPA - REPORT DI VALUTAZIONE\n`;
         txt += `=================================================\n\n`;
         txt += `TEST: ${assessment.title.toUpperCase()}\n`;
-        txt += `DATA: ${new Date().toLocaleDateString('it-IT')} ${new Date().toLocaleTimeString('it-IT')}\n`;
-        txt += `PUNTEGGIO TOTALE: ${score} / 80\n\n`;
-        txt += `VALUTAZIONE: ${result.title}\n`;
+        txt += `DATA: ${new Date().toLocaleDateString('it-IT')}\n`;
+        txt += `PUNTEGGIO: ${score} / 80\n\n`;
+        txt += `RISULTATO: ${result.title}\n`;
         txt += `-------------------------------------------------\n`;
         txt += `${cleanSummary}\n\n`;
         
         if (phaseData) {
-            txt += `ANALISI ARCHITETTURA DEL SONNO:\n`;
+            txt += `DETTAGLIO ARCHITETTURA DEL SONNO:\n`;
             phaseData.forEach(p => {
-                txt += `- ${p.name.padEnd(10)}: ${p.percentage}% [${p.status}]\n`;
+                txt += `- ${p.name.padEnd(10)}: ${p.percentage}% (${p.status})\n`;
             });
             
             if (galenic) {
                 txt += `\n-------------------------------------------------\n`;
-                txt += `   FORMULA GALENICA PERSONALIZZATA\n`;
+                txt += `   PIANO GALENICO PERSONALIZZATO\n`;
                 txt += `-------------------------------------------------\n`;
-                txt += `OBIETTIVO: Sostegno per ${galenic.phases.join(' e ')}\n`;
+                txt += `OBIETTIVO: Supporto ${galenic.phases.join(' e ')}\n`;
                 txt += `COMPOSIZIONE: ${galenic.ingredients.join(' + ')}\n`;
-                txt += `INDICAZIONI: 1-2 capsule la sera 30 minuti prima di coricarsi.\n\n`;
-                txt += `Presenta questo report in Farmacia Centrale Montesilvano\nper la preparazione nel laboratorio galenico.\n`;
+                txt += `POSOLOGIA: 1-2 capsule 30 min prima di coricarsi.\n\n`;
+                txt += `Porta questo report in Farmacia Centrale Montesilvano.\n`;
             }
         }
-
         txt += `\n=================================================\n`;
-        txt += `Disclaimer: Il presente report è un'autovalutazione guidata\ne non sostituisce in alcun modo la diagnosi medica.`;
+        txt += `Disclaimer: Autovalutazione AI. Non sostituisce il medico.`;
         
         const blob = new Blob(["\uFEFF" + txt], { type: 'text/plain;charset=utf-8' });
         const link = document.createElement('a');
         link.href = URL.createObjectURL(blob);
-        link.download = `Report_${assessment.id}_${new Date().getTime()}.txt`;
+        link.download = `Report_${assessment.id}_${Date.now()}.txt`;
         link.click();
     };
 
@@ -93,7 +91,7 @@ const ResultsScreen = ({ assessment, score, answers, onRetake, onBackToHome }) =
 
                 {phaseData && (
                     <div className="text-left mb-8 space-y-4">
-                        <h3 className="text-xl font-bold text-slate-800 border-b pb-2">Dettaglio Fasi del Sonno</h3>
+                        <h3 className="text-xl font-bold text-slate-800 border-b pb-2">Analisi del Sonno</h3>
                         {phaseData.map(p => (
                             <div key={p.name}>
                                 <div className="flex justify-between text-sm font-bold mb-1">
@@ -116,13 +114,12 @@ const ResultsScreen = ({ assessment, score, answers, onRetake, onBackToHome }) =
                         <div className="relative z-10">
                             <div className="flex items-center gap-3 mb-3">
                                 <BeakerIcon className="w-6 h-6"/> 
-                                <h3 className="text-lg font-bold">Formula Galenica Personalizzata</h3>
+                                <h3 className="text-lg font-bold">Formula Personalizzata</h3>
                             </div>
-                            <p className="text-indigo-100 text-sm mb-4">Ottimizzata per: {galenic.phases.join(', ')}</p>
                             <div className="bg-white/10 p-4 rounded-xl font-mono text-sm mb-4 border border-white/20">
                                 {galenic.ingredients.join(' + ')}
                             </div>
-                            <p className="text-xs opacity-90">Richiedi la preparazione in Farmacia Centrale presentando questo report.</p>
+                            <p className="text-xs opacity-90 italic">Preparazione esclusiva in Farmacia Centrale Montesilvano.</p>
                         </div>
                     </div>
                 )}
@@ -130,10 +127,9 @@ const ResultsScreen = ({ assessment, score, answers, onRetake, onBackToHome }) =
                 <div className="flex flex-col sm:flex-row justify-center gap-4">
                     <button onClick={onRetake} className="px-6 py-3 bg-slate-100 text-slate-700 font-bold rounded-xl hover:bg-slate-200 transition-all">Ripeti Test</button>
                     <button onClick={downloadTxt} className="px-6 py-3 bg-emerald-500 text-white font-bold rounded-xl shadow-lg flex items-center justify-center gap-2 hover:bg-emerald-600 transition-all transform active:scale-95">
-                        <DownloadIcon className="w-5 h-5"/> 
-                        Scarica Report (.txt)
+                        <DownloadIcon className="w-5 h-5"/> Scarica Report (.txt)
                     </button>
-                    <button onClick={onBackToHome} className="px-6 py-3 bg-sky-600 text-white font-bold rounded-xl hover:bg-sky-700 transition-all shadow-md">Torna alla Home</button>
+                    <button onClick={onBackToHome} className="px-6 py-3 bg-sky-600 text-white font-bold rounded-xl hover:bg-sky-700 transition-all">Home</button>
                 </div>
             </div>
         </div>
