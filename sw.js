@@ -1,10 +1,9 @@
-const CACHE_NAME = 'clinical-wellness-v20';
+const CACHE_NAME = 'clinical-wellness-v21';
+const BASE = '/CLINICAL-WELLNESS-SPA/';
 
-// FIX: GitHub Pages usa una sottocartella /CLINICAL-WELLNESS-SPA/
-// quindi i file vanno referenziati con percorso relativo
 const urlsToCache = [
-  './index.html',
-  './manifest.json'
+  `${BASE}index.html`,
+  `${BASE}manifest.json`
 ];
 
 self.addEventListener('install', (event) => {
@@ -21,36 +20,40 @@ self.addEventListener('install', (event) => {
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
 
-  // BYPASS AUDIO: il SW NON deve toccare gli MP3
+  // BYPASS AUDIO
   if (
     event.request.destination === 'audio' ||
-    url.pathname.includes('/audio/') ||
     url.pathname.endsWith('.mp3')
-  ) {
-    return; // lascia la rete gestire l'audio
-  }
-
-  // BYPASS richieste dev
-  if (
-    url.port === '5173' ||
-    url.pathname.startsWith('/@') ||
-    url.pathname.startsWith('/node_modules')
   ) {
     return;
   }
 
+  // BYPASS richieste non GET
+  if (event.request.method !== 'GET') return;
+
+  // BYPASS richieste fuori dominio
+  if (!url.origin.startsWith(self.location.origin)) return;
+
+  // WHITELIST estensioni cacheabili
+  const CACHEABLE = ['.html', '.js', '.css', '.png', '.svg', '.json'];
+  if (!CACHEABLE.some(ext => url.pathname.endsWith(ext))) return;
+
   event.respondWith(
-    fetch(event.request)
-      .then((response) => {
-        if (response && response.status === 200 && response.type === 'basic') {
-          const responseToCache = response.clone();
-          caches.open(CACHE_NAME).then((cache) => {
-            cache.put(event.request, responseToCache);
-          });
-        }
-        return response;
-      })
-      .catch(() => caches.match(event.request))
+    caches.match(event.request).then((cached) => {
+      const fetchPromise = fetch(event.request)
+        .then((response) => {
+          if (response && response.status === 200 && response.type === 'basic') {
+            const responseToCache = response.clone();
+            caches.open(CACHE_NAME).then((cache) => {
+              cache.put(event.request, responseToCache);
+            });
+          }
+          return response;
+        })
+        .catch(() => cached);
+
+      return cached || fetchPromise;
+    })
   );
 });
 

@@ -1,26 +1,34 @@
-
 {
-  "name": "Clinical Wellness Spa",
-  "short_name": "WellnessSpa",
-  "description": "Il tuo portale personale per il benessere. Gestisci test di autovalutazione, routine di benessere, prenotazioni e molto altro.",
-  "start_url": ".",
+  "name": "Clinical Wellness SPA",
+  "short_name": "WellnessSPA",
+  "start_url": "/CLINICAL-WELLNESS-SPA/",
+  "scope": "/CLINICAL-WELLNESS-SPA/",
   "display": "standalone",
-  "background_color": "#f8fafc",
+  "background_color": "#0ea5e9",
   "theme_color": "#0ea5e9",
-  "orientation": "portrait",
+  "orientation": "portrait-primary",
+  "description": "Applicazione Clinical Wellness SPA",
   "icons": [
     {
-      "src": "/app-icon.png?v=5",
+      "src": "/CLINICAL-WELLNESS-SPA/icons/icon-192.png",
       "sizes": "192x192",
-      "type": "image/png",
-      "purpose": "any maskable"
+      "type": "image/png"
     },
     {
-      "src": "/app-icon.png?v=5",
+      "src": "/CLINICAL-WELLNESS-SPA/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    },
+    {
+      "src": "/CLINICAL-WELLNESS-SPA/icons/icon-1024.png",
+      "sizes": "1024x1024",
+      "type": "image/png"
+    },
+    {
+      "src": "/CLINICAL-WELLNESS-SPA/icons/maskable-512.png",
       "sizes": "512x512",
       "type": "image/png",
-      "purpose": "any maskable"
+      "purpose": "maskable"
     }
-  ],
-  "requestFramePermissions": []
+  ]
 }
