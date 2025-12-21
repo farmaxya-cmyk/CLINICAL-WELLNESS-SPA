@@ -1,4 +1,4 @@
-const CACHE_NAME = 'clinical-wellness-v21';
+const CACHE_NAME = 'clinical-wellness-v22';
 const BASE = '/CLINICAL-WELLNESS-SPA/';
 
 const urlsToCache = [
@@ -18,12 +18,31 @@ self.addEventListener('install', (event) => {
 });
 
 self.addEventListener('fetch', (event) => {
-  const url = new URL(event.request.url);
+  const requestURL = new URL(event.request.url);
+
+  // Ignora richieste fuori dominio
+  if (requestURL.origin !== location.origin) return;
+
+  // Ricostruisci l’URL corretto con BASE
+  let fixedURL = requestURL.pathname;
+  if (!fixedURL.startsWith(BASE)) {
+    fixedURL = BASE + fixedURL.replace(/^\//, '');
+  }
+
+  const fixedRequest = new Request(fixedURL, {
+    method: event.request.method,
+    headers: event.request.headers,
+    mode: event.request.mode,
+    credentials: event.request.credentials,
+    redirect: event.request.redirect,
+    referrer: event.request.referrer,
+    referrerPolicy: event.request.referrerPolicy
+  });
 
   // BYPASS AUDIO
   if (
     event.request.destination === 'audio' ||
-    url.pathname.endsWith('.mp3')
+    fixedURL.endsWith('.mp3')
   ) {
     return;
   }
@@ -31,21 +50,18 @@ self.addEventListener('fetch', (event) => {
   // BYPASS richieste non GET
   if (event.request.method !== 'GET') return;
 
-  // BYPASS richieste fuori dominio
-  if (!url.origin.startsWith(self.location.origin)) return;
-
   // WHITELIST estensioni cacheabili
   const CACHEABLE = ['.html', '.js', '.css', '.png', '.svg', '.json'];
-  if (!CACHEABLE.some(ext => url.pathname.endsWith(ext))) return;
+  if (!CACHEABLE.some(ext => fixedURL.endsWith(ext))) return;
 
   event.respondWith(
-    caches.match(event.request).then((cached) => {
-      const fetchPromise = fetch(event.request)
+    caches.match(fixedRequest).then((cached) => {
+      const fetchPromise = fetch(fixedRequest)
         .then((response) => {
           if (response && response.status === 200 && response.type === 'basic') {
             const responseToCache = response.clone();
             caches.open(CACHE_NAME).then((cache) => {
-              cache.put(event.request, responseToCache);
+              cache.put(fixedRequest, responseToCache);
             });
           }
           return response;
