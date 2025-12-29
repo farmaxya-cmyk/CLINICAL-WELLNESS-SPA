@@ -14,18 +14,12 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
 
   // 🔥 BYPASS AUDIO: Catbox + MP3
-  if (
-    url.hostname.includes('catbox.moe') ||
-    url.pathname.endsWith('.mp3')
-  ) {
-    event.respondWith(
-      fetch(event.request, { mode: 'no-cors' }).catch(() => {
-        // Risposta "finta" per evitare errori
-        return new Response(null, { status: 200 });
-      })
-    );
-    return;
-  }
+ 
+if (url.pathname.endsWith('.mp3')) {
+  // Lascia passare l’audio senza interferire
+  return;
+}
+
 
   // 🔧 Escludi richieste interne di Vite
   if (
